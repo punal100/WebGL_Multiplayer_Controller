@@ -212,6 +212,8 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
 
       // Host keyboard fallback (direct play without controllers).
       const onKeyDown = (e) => {
+        if (!gameDef.engine.applyKeyAction) return;
+        const next = gameDef.engine.applyKeyAction(state, e.key, '1');
         if (next !== state) {
           state = next;
           if (socket) socket.emit('game_state', { gameName, state: serializeState() });

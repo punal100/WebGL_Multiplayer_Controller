@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { socket } from '../socket.js';
 import GameCanvas from './GameCanvas.jsx';
@@ -80,7 +80,10 @@ export default function VirtualController() {
     const onDisconnect = () => setConnected(false);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-    setConnected(socket.connected);
+    // Re-sync in case the socket connected/disconnected between the initial
+    // render and this effect subscribing. Guarded so it only updates state when
+    // the live socket value actually differs (avoids a needless re-render).
+    setConnected((c) => (c === socket.connected ? c : socket.connected));
 
     // Keep the layout in sync with the physical orientation (phones).
     const onResize = () => setHorizontal(detectHorizontal());

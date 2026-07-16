@@ -183,7 +183,7 @@ io.on('connection', (socket) => {
 
   // Host (or any client) requests a full reset of the room state. Only the
   // authoritative host may reset the single source of truth.
-  socket.on('reset_game', (payload) => {
+  socket.on('reset_game', (_payload) => {
     const room = socket.data.room;
     if (!room) return;
     if (!socket.data.authoritative || roomHost.get(room) !== socket.id) return;
@@ -203,7 +203,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    const { room, role, controllerId, authoritative } = socket.data;
+    const { room, role, controllerId } = socket.data;
     if (role === 'controller' && room) {
       const m = roomControllers.get(room);
       if (m) {

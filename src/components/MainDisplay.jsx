@@ -196,7 +196,7 @@ export default function MainDisplay() {
         </div>
         <div className="controls-legend">
           <span><b>P1</b> WASD move · Q fire · E dash · R barricade · F ricochet</span>
-          <span><b>P2</b> Arrows move · , fire · . dash · / barricade · ' ricochet</span>
+          <span><b>P2</b> Arrows move · , fire · . dash · / barricade · &apos; ricochet</span>
         </div>
       </main>
 
