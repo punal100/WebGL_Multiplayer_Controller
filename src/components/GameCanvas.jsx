@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { createInitialState, serialize, step } from '../game/engine.js';
 import { renderState } from '../game/render.js';
+import { vfx } from '../game/vfx.js';
+import { audio } from '../game/audio.js';
 import { getGameDef } from '../games.js';
 
 // Host mode: the SINGLE authoritative simulator. Steps the game, draws it,
@@ -53,6 +55,12 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
 
     const render = gameDef?.render || renderState;
 
+    // Unlock audio on the first user gesture (browsers require it). The manager
+    // no-ops until then, so this is safe to call repeatedly.
+    const unlockAudio = () => audio.unlock();
+    window.addEventListener('pointerdown', unlockAudio);
+    window.addEventListener('keydown', unlockAudio);
+
     // Host seeds an initial state immediately so its buffer is valid from the
     // first frame. Client/viewer start with null state and wait for snapshots.
     if (mode === 'host') {
@@ -88,20 +96,43 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       const onState = (snap) => {
         state = snap;
         window.__clientState = snap;
+        // Capture this snapshot's transient events once; the draw loop consumes
+        // them a single time (so VFX/audio don't replay every render frame).
+        pendingEvents = snap && snap.events ? snap.events : [];
       };
+      let pendingEvents = [];
       socket.on('game_state', onState);
 
       // Repaint the latest snapshot every frame. A blank canvas is drawn
       // until the first snapshot lands.
       let running = true;
+      let lastV = performance.now();
       const raf = requestAnimationFrame(function draw() {
         if (!running) return;
+        const nowV = performance.now();
+        const dtV = Math.min(0.05, (nowV - lastV) / 1000);
+        lastV = nowV;
         // Always paint a solid background so the canvas never shows through as
         // a transparent/garbled (purple) placeholder when no snapshot has
         // arrived yet or while the container is mid-resize.
         ctx.fillStyle = '#0b0e14';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        if (state) render(ctx, canvas, state);
+        if (state) {
+          // Replay this snapshot's transient events ONCE as VFX + audio
+          // (scaled to the local canvas), then draw the world + particles.
+          // Scale host-space event coords into this canvas's buffer space.
+          // Guard against zero-sized snapshots so scaling never yields Infinity.
+          const sw = state.w > 0 ? state.w : canvas.width || 1;
+          const sh = state.h > 0 ? state.h : canvas.height || 1;
+          const sx = canvas.width / sw;
+          const sy = canvas.height / sh;
+          if (pendingEvents.length) {
+            vfx.handleEvents(pendingEvents, sx, sy);
+            audio.handleEvents(pendingEvents);
+            pendingEvents = [];
+          }
+          render(ctx, canvas, state, { vfx, dtSec: dtV });
+        }
         requestAnimationFrame(draw);
       });
 
@@ -242,9 +273,16 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       if (!running) return;
       const dt = Math.min(32, now - last);
       last = now;
+      const dtSec = dt / 1000;
 
       state = step(state, keys, dt);
-      renderState(ctx, canvas, state);
+
+      // Decoupled event bus: feed this frame's engine events to VFX + audio.
+      // The VFX manager keeps its own particle list across frames; we only
+      // hand it the NEW events each tick.
+      vfx.handleEvents(state.events, 1, 1);
+      audio.handleEvents(state.events);
+      renderState(ctx, canvas, state, { vfx, dtSec });
 
       // Don't broadcast the initial spawn before we've resumed the saved
       // state (avoids a 1-frame flicker on connected controllers). Fallback
@@ -256,6 +294,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         socket.emit('game_state', { gameName, state: snap });
         if (mode === 'host') window.__hostState = snap;
       }
+      state.events = [];
       requestAnimationFrame(loop);
     }
     const raf = requestAnimationFrame(loop);

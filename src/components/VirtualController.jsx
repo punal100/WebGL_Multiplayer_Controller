@@ -4,6 +4,7 @@ import { socket } from '../socket.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
 import { getGameDef } from '../games.js';
+import { BUTTON_META } from '../inputMap.js';
 
 const GAME_NAME = 'TankDuel';
 
@@ -28,6 +29,9 @@ const ACTIONS = [
   { id: 'a', label: 'A', cls: 'a' },
 ];
 
+// For 'keys' (TankDuel) games, show ability hints on the face buttons.
+const abilityHint = (buttonId) => BUTTON_META[buttonId]?.hint || null;
+
 // Default to vertical. Switch to horizontal when the device is clearly meant
 // to be held sideways (phone in landscape) or when it's not a touch phone
 // (PC/tablet), where a wide layout is far more usable. The user can still
@@ -50,8 +54,9 @@ export default function VirtualController() {
   const gameDef = getGameDef(gameName);
   const schema = gameDef?.inputSchema || null;
   // Map a controller button to its human-readable action (e.g. A -> "Place").
+  // For 'keys' games (TankDuel) show ability hints instead.
   const hintFor = (buttonId) => {
-    if (!schema) return null;
+    if (!schema) return abilityHint(buttonId);
     const action = schema[buttonId];
     return action ? ACTION_HINTS[action] || action : null;
   };

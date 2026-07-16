@@ -6,6 +6,7 @@ import { KEY_MAP, dispatchSyntheticKey } from '../inputMap.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
 import { getGameDef } from '../games.js';
+import { audio } from '../game/audio.js';
 
 const DEFAULT_GAME = 'TankDuel';
 
@@ -24,6 +25,7 @@ export default function MainDisplay() {
   const [status, setStatus] = useState({ 1: false, 2: false });
   const [showSettings, setShowSettings] = useState(false);
   const [isViewer, setIsViewer] = useState(false);
+  const [soundOn, setSoundOn] = useState(true);
   const viewerRef = useRef(false);
   const gameWindowRef = useRef(null);
   const pressedByController = useRef({ 1: new Set(), 2: new Set() });
@@ -142,6 +144,13 @@ export default function MainDisplay() {
     socket.emit('reset_game', { gameName: GAME_NAME });
   };
 
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    audio.unlock();
+    audio.setEnabled(next);
+  };
+
   const base = origin || `http://${lanIp}:${port}`;
   const c1Url = `${base}/Game/${GAME_NAME}/1`;
   const c2Url = `${base}/Game/${GAME_NAME}/2`;
@@ -166,6 +175,9 @@ export default function MainDisplay() {
 
       <main className="display__center">
         <div className="center-actions">
+          <button className="settings-btn" onClick={toggleSound} title="Toggle sound">
+            {soundOn ? 'Sound: On' : 'Sound: Off'}
+          </button>
           <button className="settings-btn" onClick={() => setShowSettings(true)}>
             Settings
           </button>
@@ -181,6 +193,10 @@ export default function MainDisplay() {
             gameName={GAME_NAME}
             windowRef={isViewer ? undefined : gameWindowRef}
           />
+        </div>
+        <div className="controls-legend">
+          <span><b>P1</b> WASD move · Q fire · E dash · R barricade · F ricochet</span>
+          <span><b>P2</b> Arrows move · , fire · . dash · / barricade · ' ricochet</span>
         </div>
       </main>
 

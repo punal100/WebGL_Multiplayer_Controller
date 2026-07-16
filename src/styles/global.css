@@ -181,6 +181,24 @@ body {
   cursor: pointer;
 }
 
+/* ---- Controls legend (Tank Duel ability mapping) ---- */
+.controls-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  background: #0d1119cc;
+  border: 1px solid #ffffff12;
+  border-radius: 10px;
+  padding: 10px 14px;
+  text-align: center;
+  letter-spacing: 0.2px;
+}
+.controls-legend b {
+  color: var(--text);
+}
+
 .overlay {
   position: fixed;
   inset: 0;
