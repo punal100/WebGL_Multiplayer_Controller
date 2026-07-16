@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
+import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -23,27 +24,41 @@ function cloudflaredPath() {
     return probe.stdout.toString().split(/\r?\n/)[0].trim();
   }
   // Bundled location
-  const local = path.join(os.homedir(), '.cloudflared', 'cloudflared.exe');
+  const ext = process.platform === 'win32' ? '.exe' : '';
+  const local = path.join(os.homedir(), '.cloudflared', 'cloudflared' + ext);
   return fs.existsSync(local) ? local : null;
 }
 
 function installCloudflared() {
-  console.log('[tunnel] cloudflared not found. Installing (Windows)...');
+  const isWin = process.platform === 'win32';
+  const asset = isWin ? 'cloudflared-windows-amd64.exe' : 'cloudflared-linux-amd64';
+  const ext = isWin ? '.exe' : '';
+  console.log(`[tunnel] cloudflared not found. Installing (${asset})...`);
   const dest = path.join(os.homedir(), '.cloudflared');
   fs.mkdirSync(dest, { recursive: true });
-  const exe = path.join(dest, 'cloudflared.exe');
-  const url =
-    'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe';
+  const exe = path.join(dest, 'cloudflared' + ext);
+  const url = `https://github.com/cloudflare/cloudflared/releases/latest/download/${asset}`;
   return new Promise((resolve, reject) => {
     const file = fs.createWriteStream(exe);
-    http
+    https
       .get(url, (res) => {
         if (res.statusCode !== 200) {
           reject(new Error('Download failed: ' + res.statusCode));
           return;
         }
         res.pipe(file);
-        file.on('finish', () => file.close(() => resolve(exe)));
+        file.on('finish', () => {
+          file.close(() => {
+            if (process.platform !== 'win32') {
+              try {
+                fs.chmodSync(exe, 0o755);
+              } catch {
+                /* best-effort; user can chmod manually */
+              }
+            }
+            resolve(exe);
+          });
+        });
       })
       .on('error', reject);
   });
@@ -69,10 +84,17 @@ async function startTunnel() {
   }
 
   console.log('[tunnel] Starting Cloudflare Tunnel -> localhost:' + PORT);
-  const tunnel = spawn(exe, ['tunnel', '--url', `http://localhost:${PORT}`], {
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
-  });
+  let tunnel;
+  try {
+    tunnel = spawn(exe, ['tunnel', '--url', `http://localhost:${PORT}`], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env,
+    });
+  } catch (e) {
+    console.log('[tunnel] Could not start cloudflared:', e.message);
+    console.log('[tunnel] Players on this network can still use the LAN QR codes.');
+    return;
+  }
   tunnelProc = tunnel;
 
   const printUrl = (line) => {
@@ -84,6 +106,11 @@ async function startTunnel() {
       console.log(`Controllers: ${m[0]}/Game/<game>/1  &  /2\n`);
     }
   };
+
+  tunnel.on('error', (e) => {
+    console.log('[tunnel] cloudflared error:', e.message);
+    console.log('[tunnel] Players on this network can still use the LAN QR codes.');
+  });
 
   tunnel.stdout.on('data', (d) => {
     const s = d.toString();

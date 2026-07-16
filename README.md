@@ -385,6 +385,20 @@ Upload that one file to the instance (SCP, the JupyterLab upload UI, an SFTP
 client, or a cloud bucket). Then **on the instance** (SSH or JupyterLab
 terminal):
 
+**Prerequisite — install Node.js 20 LTS** (the instance does not ship `node`/
+`npm`):
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v && npm -v
+```
+
+If `sudo` is unavailable or the instance is not Debian/Ubuntu, check
+`cat /etc/os-release` and install Node 18+ for that distro.
+
+**Run the app:**
+
 ```bash
 mkdir -p ~/webgl-mp && tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz -C ~/webgl-mp
 cd ~/webgl-mp
@@ -396,8 +410,23 @@ NODE_ENV=production NO_TUNNEL=1 npm run server
 
 Then open `http://<INSTANCE_IP>:4567/`. Expose port `4567` in the instance
 firewall. `npm run serve` prints the public `https://…trycloudflare.com` URL;
-`npm run server` runs the plain server. Use `nohup … &` or a `systemd`/`tmux`
+`npm run server` runs the plain server. Use `nohup … &` or a `tmux`
 session to keep it running after you disconnect.
+
+**Cloudflare Tunnel on the instance.** `npm run serve` needs `cloudflared` on
+`PATH`. The server tries to auto-install it (Linux: `cloudflared-linux-amd64`;
+Windows: `cloudflared-windows-amd64.exe`) if missing. If auto-install is blocked
+(e.g. no outbound GitHub access), install it yourself before starting:
+
+```bash
+curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
+```
+
+…then `NODE_ENV=production npm run serve` will pick it up and print the public
+URL. To skip the tunnel entirely and expose the instance directly, use
+`NODE_ENV=production NO_TUNNEL=1 npm run server` and open
+`http://<INSTANCE_PUBLIC_IP>:4567/` (the QR codes will point at that public IP).
 
 ---
 
@@ -466,9 +495,12 @@ Games are data-driven via `src/games/registry.js`. To add one:
 
 - Node.js 18+ (developed on Node 25) — 20 LTS recommended for shipping
 - A local network shared between the host PC and player phones
-- **For containerized deployment:** Docker (and optionally Docker Compose)
+- **For containerized deployment:** Docker (and optionally Docker Compose). Not
+  required for the E2E container-instance tarball path (see
+  [§4](#4-no-docker-option-tarball--run-directly-on-the-instance)), which runs
+  the app directly with Node.
 
 > Looking to deploy? See **[Production / Shipping Deployment](#production--shipping-deployment)**
 > for distribution builds and running on a VM or in containers, or
-> **[Build Image on Your PC, Run on a Remote Docker / VM](#build-image-on-your-pc-run-on-a-remote-docker--vm)**
-> to build locally and ship the image.
+> **[Run on E2E via a Container Instance (TIR "Own Container")](#run-on-e2e-via-a-container-instance-tir-own-container)**
+> to deploy on E2E Networks.
