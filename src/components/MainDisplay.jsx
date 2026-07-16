@@ -5,12 +5,19 @@ import { socket } from '../socket.js';
 import { KEY_MAP, dispatchSyntheticKey } from '../inputMap.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
+import { getGameDef } from '../games.js';
 
 const DEFAULT_GAME = 'TankDuel';
 
 export default function MainDisplay() {
   const { gameName = DEFAULT_GAME } = useParams();
   const GAME_NAME = gameName;
+  const gameDef = getGameDef(GAME_NAME);
+  // 'actions' games apply discrete moves to authoritative state; 'keys' games
+  // use the legacy synthetic-keyboard path (TankDuel).
+  const inputModel = gameDef?.inputModel || 'keys';
+  const inputSchema = gameDef?.inputSchema || null;
+
   const [lanIp, setLanIp] = useState('localhost');
   const [port, setPort] = useState(4567);
   const [origin, setOrigin] = useState('');
@@ -41,10 +48,8 @@ export default function MainDisplay() {
       viewerRef.current = !authoritative;
     };
 
-    const onInput = (payload) => {
-      // Defense-in-depth: ignore events that don't belong to this game's room
-      // (shouldn't happen since the server scopes relays per room, but guards
-      // against any stray cross-game input when navigating between games).
+    // --- 'keys' input model (TankDuel): controller buttons -> synthetic keys ---
+    const onInputKeys = (payload) => {
       if (payload?.gameName && payload.gameName !== GAME_NAME) return;
       if (viewerRef.current) return;
       const { controllerId, button, state } = payload;
@@ -63,6 +68,23 @@ export default function MainDisplay() {
       }
     };
 
+    // --- 'actions' input model (TicTacToe): forward the button press to the
+    // host GameCanvas, which maps it through the game's input schema and
+    // applies it to the authoritative state. We use a custom event so the
+    // canvas (which owns the state) can consume it.
+    const onInputActions = (payload) => {
+      if (payload?.gameName && payload.gameName !== GAME_NAME) return;
+      if (viewerRef.current) return;
+      if (payload.state !== 'down') return; // discrete press, ignore release
+      const action = inputSchema?.[payload.button];
+      if (!action) return;
+      window.dispatchEvent(
+        new CustomEvent('game_action', {
+          detail: { controllerId: String(payload.controllerId), action },
+        })
+      );
+    };
+
     const onStatus = ({ controllerId, connected }) => {
       setStatus((s) => ({ ...s, [String(controllerId)]: connected }));
     };
@@ -73,16 +95,19 @@ export default function MainDisplay() {
         return;
       }
       const id = String(controllerId);
-      const map = KEY_MAP[id];
-      const pressed = pressedByController.current[id];
-      pressed.forEach((button) => {
-        const key = map[button];
-        if (key) dispatchSyntheticKey(gameWindowRef.current, key, false);
-      });
-      pressed.clear();
+      if (inputModel === 'keys') {
+        const map = KEY_MAP[id];
+        const pressed = pressedByController.current[id];
+        pressed.forEach((button) => {
+          const key = map[button];
+          if (key) dispatchSyntheticKey(gameWindowRef.current, key, false);
+        });
+        pressed.clear();
+      }
       setStatus((s) => ({ ...s, [id]: false }));
     };
 
+    const onInput = inputModel === 'actions' ? onInputActions : onInputKeys;
     socket.on('controller_input', onInput);
     socket.on('controller_status', onStatus);
     socket.on('controller_disconnected', onDisconnect);
@@ -111,7 +136,7 @@ export default function MainDisplay() {
       // (prevents another game's input from reaching us after navigating away).
       socket.emit('leave_game', { gameName: GAME_NAME });
     };
-  }, [GAME_NAME]);
+  }, [GAME_NAME, inputModel, inputSchema]);
 
   const resetGame = () => {
     socket.emit('reset_game', { gameName: GAME_NAME });

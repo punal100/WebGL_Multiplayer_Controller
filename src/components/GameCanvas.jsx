@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createInitialState, serialize, step } from '../game/engine.js';
 import { renderState } from '../game/render.js';
+import { getGameDef } from '../games.js';
 
 // Host mode: the SINGLE authoritative simulator. Steps the game, draws it,
 // and broadcasts state snapshots (~30Hz) so controllers (and any extra
@@ -9,8 +10,14 @@ import { renderState } from '../game/render.js';
 // otherwise two independent sets of character data would fight and the
 // connected controllers would flicker. It only renders the server state.
 // Client mode: a phone controller. Receives snapshots and only renders them.
+//
+// Two input models are supported, selected per game via the registry:
+//   - 'keys'    (TankDuel): held-key real-time simulation (original path).
+//   - 'actions' (TicTacToe): discrete actions applied to authoritative state.
 export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel', windowRef }) {
   const canvasRef = useRef(null);
+  const gameDef = getGameDef(gameName);
+  const inputModel = gameDef?.inputModel || 'keys';
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -44,10 +51,16 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       }
     }
 
+    const render = gameDef?.render || renderState;
+
     // Host seeds an initial state immediately so its buffer is valid from the
     // first frame. Client/viewer start with null state and wait for snapshots.
     if (mode === 'host') {
-      state = createInitialState(canvas.width, canvas.height);
+      if (inputModel === 'actions') {
+        state = gameDef.engine.createInitialState();
+      } else {
+        state = createInitialState(canvas.width, canvas.height);
+      }
     }
 
     resize();
@@ -61,7 +74,10 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
 
     // Re-seed dimensions on resize for host so coordinates stay consistent
     const onResizeHost = () => {
-      if (mode === 'host') state.w = canvas.width, state.h = canvas.height;
+      if (mode === 'host' && inputModel === 'keys') {
+        state.w = canvas.width;
+        state.h = canvas.height;
+      }
     };
     window.addEventListener('resize', onResizeHost);
 
@@ -85,7 +101,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         // arrived yet or while the container is mid-resize.
         ctx.fillStyle = '#0b0e14';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        if (state) renderState(ctx, canvas, state);
+        if (state) render(ctx, canvas, state);
         requestAnimationFrame(draw);
       });
 
@@ -99,7 +115,95 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       };
     }
 
-    // Host mode (authoritative simulator)
+    // ---- Host mode (authoritative simulator) ----
+
+    // Resume from server-persisted state (so a main-page reload keeps the
+    // current progress instead of resetting). For 'actions' games we also copy
+    // the running scores forward so a round restart doesn't wipe the match.
+    let resumed = false;
+    const onResume = (snap) => {
+      if (inputModel === 'actions') {
+        state = gameDef.engine.createInitialState();
+        state.scores = snap.scores || state.scores;
+        state.board = snap.board || state.board;
+        state.turn = snap.turn || state.turn;
+        state.cursor = snap.cursor ?? state.cursor;
+        state.winner = snap.winner ?? state.winner;
+        state.lastMove = snap.lastMove ?? state.lastMove;
+      } else {
+        state = snap;
+      }
+      resumed = true;
+    };
+    socket && socket.on('resume_state', onResume);
+
+    // Reset: reseed authoritative state (keep match scores for 'actions').
+    const onReset = () => {
+      if (inputModel === 'actions') {
+        const next = gameDef.engine.createInitialState();
+        next.scores = state?.scores || { X: 0, O: 0 };
+        state = next;
+      } else {
+        state = createInitialState(canvas.width, canvas.height);
+      }
+      resumed = true;
+    };
+    socket && socket.on('game_reset', onReset);
+
+    if (inputModel === 'actions') {
+      // Discrete-action games: apply player actions to the authoritative state
+      // and broadcast. No continuous simulation loop is needed.
+      const serializeState = () => gameDef.engine.serialize(state);
+
+      const applyFromHost = (action, controllerId = '1') => {
+        const next = gameDef.engine.applyAction(state, controllerId, action);
+        if (next !== state) {
+          state = next;
+          if (socket) socket.emit('game_state', { gameName, state: serializeState() });
+        }
+      };
+
+      // Actions arriving from controllers (dispatched by MainDisplay).
+      const onAction = (e) => {
+        applyFromHost(e.detail.action, e.detail.controllerId);
+      };
+      window.addEventListener('game_action', onAction);
+
+      // Host keyboard fallback (direct play without controllers).
+      const onKeyDown = (e) => {
+        if (next !== state) {
+          state = next;
+          if (socket) socket.emit('game_state', { gameName, state: serializeState() });
+        }
+      };
+      window.addEventListener('keydown', onKeyDown);
+      if (windowRef) windowRef.current = window;
+
+      // Steady repaint loop (also covers resume/reset broadcasts already sent).
+      let running = true;
+      const raf = requestAnimationFrame(function draw() {
+        if (!running) return;
+        ctx.fillStyle = '#0b0e14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (state) render(ctx, canvas, state);
+        requestAnimationFrame(draw);
+      });
+
+      return () => {
+        running = false;
+        cancelAnimationFrame(raf);
+        window.removeEventListener('game_action', onAction);
+        window.removeEventListener('keydown', onKeyDown);
+        ro.disconnect();
+        window.removeEventListener('resize', resize);
+        window.removeEventListener('resize', onResizeHost);
+        socket && socket.off('resume_state', onResume);
+        socket && socket.off('game_reset', onReset);
+        if (windowRef) windowRef.current = null;
+      };
+    }
+
+    // ---- 'keys' input model (TankDuel): held-key real-time simulation ----
     const keys = new Set();
     const onDown = (e) => keys.add(e.key.toLowerCase());
     const onUp = (e) => keys.delete(e.key.toLowerCase());
@@ -116,26 +220,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       else keys.delete(key.toLowerCase());
     };
     socket && socket.on('host_key', onRemoteKey);
-
-    // Resume from server-persisted state (so a main-page reload keeps the
-    // current positions/rotations/score instead of resetting). We hold off
-    // broadcasting until this arrives (or a short fallback) so controllers
-    // never see a single frame of the local initial spawn.
-    let resumed = false;
-    const onResume = (snap) => {
-      keys.clear();
-      state = snap;
-      resumed = true;
-    };
-    socket && socket.on('resume_state', onResume);
-
-    // Reset button: reseed the authoritative state.
-    const onReset = () => {
-      keys.clear();
-      state = createInitialState(canvas.width, canvas.height);
-      resumed = true;
-    };
-    socket && socket.on('game_reset', onReset);
 
     const mountTime = Date.now();
 
@@ -178,7 +262,8 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       socket && socket.off('host_key', onRemoteKey);
       if (windowRef) windowRef.current = null;
     };
-  }, [mode, socket, gameName, windowRef]);
+  }, [mode, socket, gameName, windowRef, inputModel, gameDef]);
 
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
+

@@ -90,14 +90,18 @@ WebGL_Multiplayer_Controller/
 │   └── lanIp.js       # Detects the machine's LAN IPv4 address
 ├── src/
 │   ├── main.jsx       # React entry + router (landing, /Game/:name, /Game/:name/:id)
-│   ├── games.js       # Registry of available games
+│   ├── games.js       # Re-exports the game registry + DEFAULT_GAME
+│   ├── games/
+│   │   ├── registry.js  # Master registry: engine, renderer, input model per game
+│   │   └── tictactoe/   # TicTacToe engine + renderer (turn-based, 'actions' input)
+│   ├── game/            # Shared real-time engine (TankDuel: 'keys' input)
 │   ├── socket.js      # Shared Socket.io client
 │   ├── inputMap.js    # Key mapping + synthetic KeyboardEvent dispatch
 │   ├── components/
 │   │   ├── GameSelect.jsx     # Landing page: pick a game
 │   │   ├── MainDisplay.jsx     # Host screen: QR codes, game, status
 │   │   ├── VirtualController.jsx # Mobile controller page
-│   │   └── GameCanvas.jsx      # Embedded 2-player WebGL/Canvas game
+│   │   └── GameCanvas.jsx      # Embedded game canvas (host/viewer/client)
 │   └── styles/global.css
 ├── index.html
 ├── vite.config.js
@@ -115,6 +119,20 @@ WebGL_Multiplayer_Controller/
 - **Multiple games at once** — each game runs in its own isolated Socket.io room, so inputs from one game never affect another, and several games can run concurrently.
 - **PC settings overlay** — mouse/keyboard accessible for host config.
 - **Mobile-hardened UI** — `touch-action: none`, no scroll/zoom, fullscreen layout.
+- **Two games included** — `TankDuel` (real-time tank shooter, key-driven) and `TicTacToe` (turn-based 3×3 duel, action-driven). Both share the same controller/QR infrastructure.
+
+---
+
+## Adding a New Game
+
+Games are data-driven via `src/games/registry.js`. To add one:
+
+1. Create `src/games/<name>/engine.js` exporting `createInitialState`, `serialize`, and `applyAction(state, controllerId, action)` (plus optional `applyKeyAction` for host-keyboard play).
+2. Create `src/games/<name>/render.js` exporting `renderState(ctx, canvas, state)` to draw a snapshot.
+3. Register it in `registry.js` with `inputModel`:
+   - `'keys'` — controller buttons become synthetic keyboard events (real-time games, e.g. TankDuel).
+   - `'actions'` — controller buttons map to discrete game actions via `inputSchema` (turn-based games, e.g. TicTacToe).
+4. It automatically appears on the landing page, gets isolated rooms, and QR codes — no other changes needed.
 
 ---
 

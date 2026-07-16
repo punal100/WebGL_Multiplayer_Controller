@@ -68,9 +68,9 @@ async function startTunnel() {
     const m = line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
     if (m) {
       console.log(`\n=== PUBLIC URL (any network): ${m[0]} ===`);
-      console.log(`Host game:    ${m[0]}/Game/TankDuel`);
-      console.log(`Controller 1: ${m[0]}/Game/TankDuel/1`);
-      console.log(`Controller 2: ${m[0]}/Game/TankDuel/2\n`);
+      console.log(`TankDuel:    ${m[0]}/Game/TankDuel`);
+      console.log(`TicTacToe:   ${m[0]}/Game/TicTacToe`);
+      console.log(`Controllers: ${m[0]}/Game/<game>/1  &  /2\n`);
     }
   };
 

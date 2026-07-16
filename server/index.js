@@ -17,9 +17,10 @@ console.log(`\n=== WebGL Multiplayer Controller ===`);
 console.log(`Local access:  http://localhost:${PORT}`);
 console.log(`LAN access:    http://${lanIp}:${PORT}`);
 console.log(`Pick a game:   http://${lanIp}:${PORT}/`);
-console.log(`Host TankDuel:   http://${lanIp}:${PORT}/Game/TankDuel`);
-console.log(`Controller 1:  http://${lanIp}:${PORT}/Game/TankDuel/1`);
-console.log(`Controller 2:  http://${lanIp}:${PORT}/Game/TankDuel/2\n`);
+console.log(`TankDuel host:  http://${lanIp}:${PORT}/Game/TankDuel`);
+console.log(`  Controllers: http://${lanIp}:${PORT}/Game/TankDuel/1  &  /2`);
+console.log(`TicTacToe host: http://${lanIp}:${PORT}/Game/TicTacToe`);
+console.log(`  Controllers: http://${lanIp}:${PORT}/Game/TicTacToe/1  &  /2\n`);
 
 // Expose LAN info to the frontend
 app.get('/api/config', (req, res) => {

@@ -1,18 +1,13 @@
-// Registry of games exposed by the controller hub. Adding a game here makes
-// it selectable on the landing page and keeps every other screen (host,
-// controller, server URLs) in sync via the single GAME_NAMES list.
-export const GAMES = [
-  {
-    name: 'TankDuel',
-    title: 'Tank Duel',
-    tagline: 'Top-down 2-player tank shooter',
-    players: 2,
-  },
-];
+// Games exposed by the controller hub. The authoritative list lives in
+// src/games/registry.js (which also carries each game's engine, renderer, and
+// input model). This file re-exports it so existing imports keep working and
+// the landing page / server URLs stay in sync.
+export {
+  GAMES,
+  GAME_NAMES,
+  GAME_REGISTRY,
+  getGame,
+  getGameDef,
+} from './games/registry.js';
 
-// Convenience list of game names used for routing/validation.
-export const GAME_NAMES = GAMES.map((g) => g.name);
-
-export function getGame(name) {
-  return GAMES.find((g) => g.name === name) || null;
-}
+export const DEFAULT_GAME = 'TankDuel';

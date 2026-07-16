@@ -3,8 +3,16 @@ import { useParams } from 'react-router-dom';
 import { socket } from '../socket.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
+import { getGameDef } from '../games.js';
 
 const GAME_NAME = 'TankDuel';
+
+// Friendly label shown under each button when the game declares an
+// inputSchema (turn-based games). Falls back to the generic glyph.
+const ACTION_HINTS = {
+  up: 'Up', down: 'Down', left: 'Left', right: 'Right',
+  place: 'Place', restart: 'Reset',
+};
 
 const DPAD = [
   { id: 'up', label: '▲', cls: 'up' },
@@ -38,6 +46,15 @@ export default function VirtualController() {
   const id = String(controllerId);
   const [connected, setConnected] = useState(socket.connected);
   const [horizontal, setHorizontal] = useState(detectHorizontal);
+
+  const gameDef = getGameDef(gameName);
+  const schema = gameDef?.inputSchema || null;
+  // Map a controller button to its human-readable action (e.g. A -> "Place").
+  const hintFor = (buttonId) => {
+    if (!schema) return null;
+    const action = schema[buttonId];
+    return action ? ACTION_HINTS[action] || action : null;
+  };
 
   useEffect(() => {
     socket.emit('join_game', {
@@ -87,6 +104,16 @@ export default function VirtualController() {
     },
   });
 
+  const renderBtn = (b) => {
+    const hint = hintFor(b.id);
+    return (
+      <button key={b.id} className={`btn ${b.cls}`} {...bind(b.id)}>
+        <span className="btn__label">{b.label}</span>
+        {hint && <span className="btn__hint">{hint}</span>}
+      </button>
+    );
+  };
+
   return (
     <div className={`controller ${horizontal ? 'controller--horizontal' : 'controller--vertical'}`}>
       <div className="controller__header">
@@ -104,26 +131,10 @@ export default function VirtualController() {
       </div>
       <div className="controller__body">
         <div className="dpad">
-          {DPAD.map((b) => (
-            <button
-              key={b.id}
-              className={`btn ${b.cls}`}
-              {...bind(b.id)}
-            >
-              {b.label}
-            </button>
-          ))}
+          {DPAD.map(renderBtn)}
         </div>
         <div className="actions">
-          {ACTIONS.map((b) => (
-            <button
-              key={b.id}
-              className={`btn ${b.cls}`}
-              {...bind(b.id)}
-            >
-              {b.label}
-            </button>
-          ))}
+          {ACTIONS.map(renderBtn)}
         </div>
       </div>
       <div className={`controller__status ${connected ? 'connected' : ''}`}>
