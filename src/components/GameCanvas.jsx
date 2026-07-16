@@ -59,24 +59,31 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
 
     // Host mode
     const keys = new Set();
-    const onDown = (e) => { keys.add(e.key.toLowerCase()); if (typeof window !== 'undefined') window.__hostKeys = [...keys]; };
-    const onUp = (e) => { keys.delete(e.key.toLowerCase()); if (typeof window !== 'undefined') window.__hostKeys = [...keys]; };
+    const onDown = (e) => keys.add(e.key.toLowerCase());
+    const onUp = (e) => keys.delete(e.key.toLowerCase());
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
     if (windowRef) windowRef.current = window;
 
     // Resume from server-persisted state (so a main-page reload keeps the
-    // current positions/rotations/score instead of resetting).
+    // current positions/rotations/score instead of resetting). We hold off
+    // broadcasting until this arrives (or a short fallback) so controllers
+    // never see a single frame of the local initial spawn.
+    let resumed = false;
     const onResume = (snap) => {
       state = snap;
+      resumed = true;
     };
     socket && socket.on('resume_state', onResume);
 
     // Reset button: reseed the authoritative state.
     const onReset = () => {
       state = createInitialState(canvas.width, canvas.height);
+      resumed = true;
     };
     socket && socket.on('game_reset', onReset);
+
+    const mountTime = Date.now();
 
     let running = true;
     let last = performance.now();
@@ -90,7 +97,11 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       state = step(state, keys, dt);
       renderState(ctx, canvas, state);
 
-      if (socket && now - lastEmit >= 33) {
+      // Don't broadcast the initial spawn before we've resumed the saved
+      // state (avoids a 1-frame flicker on connected controllers). Fallback
+      // after 250ms so a brand-new room still starts broadcasting.
+      const canEmit = resumed || Date.now() - mountTime > 250;
+      if (socket && canEmit && now - lastEmit >= 33) {
         lastEmit = now;
         const snap = serialize(state);
         socket.emit('game_state', { gameName, state: snap });

@@ -50,6 +50,8 @@ export function serialize(state) {
       score: p.score,
       alive: p.alive,
       color: p.color,
+      cooldown: p.cooldown,
+      respawn: p.respawn,
     })),
     bullets: state.bullets.map((b) => ({
       x: Math.round(b.x),
