@@ -9,6 +9,11 @@ export default defineConfig({
   },
   server: {
     port: 4567,
+    // Allow the Vite dev server to be reached through a Cloudflare Tunnel
+    // (*.trycloudflare.com) and any other host. Vite blocks unknown Host
+    // headers by default; without this, tunneled dev requests are rejected
+    // with "Blocked request. This host ... is not allowed."
+    allowedHosts: true,
     proxy: {
       '/api': 'http://localhost:4567',
       '/socket.io': {
