@@ -39,6 +39,14 @@ COPY --from=build /app/dist ./dist
 COPY server ./server
 COPY public ./public
 
+# Compatibility shim for managed container platforms (e.g. E2E Networks Pods)
+# whose default start command is /etc/config/nb_public_image_setup.sh. We
+# provide that path (and /init for notebook-style runtimes) so the image boots
+# even when the platform injects its own default command instead of our CMD.
+COPY docker/nb_public_image_setup.sh /etc/config/nb_public_image_setup.sh
+RUN chmod +x /etc/config/nb_public_image_setup.sh \
+    && ln -sf /etc/config/nb_public_image_setup.sh /init
+
 EXPOSE 4567
 
 # Start the server AND the Cloudflare Tunnel (launch.js finds cloudflared on

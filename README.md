@@ -484,6 +484,43 @@ ssh user@<VM_IP> "cd /opt/webgl-mp-controller && docker compose up -d"
   if you front the container with a proxy.
 - **Health check:** `GET /api/config` returns JSON — use it as a liveness probe.
 
+### F. Troubleshooting — `exec /etc/config/nb_public_image_setup.sh: no such file or directory`
+
+If the Pod **crashes in a restart loop** with:
+
+```text
+exec /etc/config/nb_public_image_setup.sh: no such file or directory
+```
+
+…the E2E Networks Pod runtime **defaults the container start command** to that
+path (it lives in E2E's own base images, not ours). Even after we ship a shim
+at that path, E2E attaches a config volume that **shadows `/etc/config` at
+runtime**, so the file is not visible inside the running container and execve
+still fails. The image itself is fine — this is purely the platform's default
+command + volume mount.
+
+**Fix (do this in the E2E Pod UI):** override the **Start Command / Command**
+field (currently auto-filled with `/etc/config/nb_public_image_setup.sh`).
+Pick one:
+
+- **Leave it empty** → the image's own `CMD` (`node server/launch.js`) runs.
+- **Or set it explicitly** to:
+
+  ```text
+  node server/launch.js
+  ```
+
+  (add the env var `NO_TUNNEL=1` if you expose the app through your own
+  ingress/reverse proxy instead of the built-in Cloudflare Tunnel).
+
+After changing the command, **delete and recreate the Pod** (a plain restart
+may reuse the cached container spec). The container will then boot the server
+directly without touching `/etc/config`.
+
+> The image also ships a `/etc/config/nb_public_image_setup.sh` + `/init` shim
+> as a belt-and-suspenders fallback for platforms that do not shadow that path,
+> but on E2E you must override the command as shown above.
+
 ---
 
 ## Project Structure
