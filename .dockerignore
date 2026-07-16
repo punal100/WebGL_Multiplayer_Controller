@@ -1,0 +1,12 @@
+node_modules
+dist
+release
+.git
+.gitignore
+.vscode
+.idea
+*.log
+Plan
+.playwright-mcp
+.kilo
+README.md

@@ -8,6 +8,9 @@ dist/
 build/
 .vite/
 
+# Distribution artifacts (npm run pack)
+release/
+
 # Logs
 logs/
 *.log

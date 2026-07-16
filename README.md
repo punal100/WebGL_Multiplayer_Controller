@@ -82,6 +82,10 @@ Controller 2:  http://192.168.1.8:4567/Game/TankDuel/2
 | `npm run build`   | Build the React app into `dist/`.                        |
 | `npm run server`  | Run the Express + Socket.io server.                      |
 | `npm run start`   | `build` then `server` — one command to go live.          |
+| `npm run pack`    | Build + bundle a single shippable `.tar.gz` in `release/`. |
+| `npm run docker:build` | Build the production Docker image.                  |
+| `npm run docker:run`   | Run the built image (maps port 4567).              |
+| `npm run docker:up`    | Build + run via Docker Compose (detached).         |
 
 ---
 
@@ -106,92 +110,90 @@ The server reads the following variables (all optional, with sane defaults):
 
 ---
 
-### 2. Take a Distribution Build
+### 2. Take a Distribution Build (one command)
 
-A distribution build compiles the React frontend into static assets in `dist/`.
-The Node server then serves those static files plus the Socket.io relay.
-
-```bash
-# 1. Install ALL dependencies (build needs devDependencies like vite)
-npm ci
-
-# 2. Produce the optimized static frontend into dist/
-npm run build
-```
-
-After this, the **shippable artifacts** are:
-
-```
-dist/            # compiled, minified frontend (static)
-server/          # Express + Socket.io runtime
-package.json     # runtime dependency manifest
-package-lock.json
-```
-
-`node_modules/`, source files under `src/`, and the Vite config are **not**
-required at runtime — only `dist/`, `server/`, and the production dependencies.
-
-#### Optional: package a tarball to ship
+Just like `npm run start` runs everything out of the box locally, **`npm run
+pack` produces a complete, shippable build in one command**:
 
 ```bash
-# Create a clean, versioned artifact you can copy to any host
-npm pack            # or:
-tar -czf webgl-mp-controller.tgz dist server package.json package-lock.json public
+npm ci        # once, to install build tools
+npm run pack
 ```
 
-Copy that archive to your VM / build the container from it.
+This runs the frontend build **and** bundles everything the runtime needs into a
+single archive:
+
+```
+release/webgl-multiplayer-controller-<version>.tar.gz
+```
+
+The archive contains only the runtime files — `dist/` (compiled frontend),
+`server/`, `public/`, and `package*.json`. Source files, `node_modules/`, and
+the Vite config are left out. **One file to copy, nothing to assemble by hand.**
+
+> `npm run pack` is cross-platform (Windows / Linux / macOS) — it uses the
+> built-in `tar` available on Windows 10+ and every Unix.
 
 ---
 
 ### 3. Run in a Shipping Environment — Virtual Machine
 
-These steps assume a fresh Linux VM (Ubuntu/Debian). Adjust package commands
-for other distros.
+The whole flow is: **pack once → copy one file → extract → run.**
 
-#### 3.1 Provision the VM
+#### 3.1 On your machine — build the artifact
+
+```bash
+npm run pack
+# -> release/webgl-multiplayer-controller-1.0.0.tar.gz
+```
+
+#### 3.2 Provision the VM (fresh Ubuntu/Debian)
 
 ```bash
 # Install Node.js 18+ (20 LTS recommended)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-# Create a dedicated app directory
+# App directory
 sudo mkdir -p /opt/webgl-mp-controller
 sudo chown "$USER" /opt/webgl-mp-controller
 ```
 
-#### 3.2 Deploy the build
+#### 3.3 Copy the one archive to the VM
+
+Use `scp` from **your machine** (replace user/IP). This is the whole "copy to
+the VM" step — a single file:
 
 ```bash
-# Copy your artifact (dist/, server/, package*.json, public/) onto the VM,
-# e.g. via scp, then from inside /opt/webgl-mp-controller:
+scp release/webgl-multiplayer-controller-1.0.0.tar.gz \
+    user@<VM_IP>:/opt/webgl-mp-controller/
+```
+
+> No `scp`? Any transfer works — `rsync`, an SFTP client (WinSCP/FileZilla), a
+> cloud bucket, or your CI's artifact upload. It's just one file.
+
+#### 3.4 Extract, install, run (on the VM)
+
+```bash
 cd /opt/webgl-mp-controller
+tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz   # unpack the one file
 
-# Install ONLY production dependencies (no vite/react needed at runtime)
-npm ci --omit=dev
+npm ci --omit=dev        # install ONLY production deps (no vite/react)
+sudo ufw allow 4567/tcp  # open the firewall port
+
+# Go live:
+NODE_ENV=production npm run server      # plain server (no tunnel)
+# or, to also auto-start a public Cloudflare Tunnel:
+NODE_ENV=production npm run start
 ```
 
-#### 3.3 Open the firewall
+Then reach the host at `http://<VM_IP>:4567/`.
 
-```bash
-# Allow inbound traffic on the app port (default 4567)
-sudo ufw allow 4567/tcp
-```
+> `npm run server` = plain server. `npm run start` = server **+** auto Cloudflare
+> Tunnel. The bundled tunnel auto-installer downloads the Windows binary; on
+> Linux install `cloudflared` from your package manager first so it's on `PATH`.
 
-#### 3.4 Run it
-
-Quick foreground run:
-
-```bash
-NODE_ENV=production PORT=4567 node server/index.js
-```
-
-> Use `node server/index.js` for a **plain server** (no tunnel).
-> Use `node server/launch.js` if you also want the **auto Cloudflare Tunnel**
-> (note: the bundled auto-installer downloads the Windows binary; on Linux
-> install `cloudflared` via your package manager first so it's on `PATH`).
-
-#### 3.5 Keep it running (systemd)
+#### 3.5 Keep it running across reboots (systemd)
 
 Create `/etc/systemd/system/webgl-mp.service`:
 
@@ -223,109 +225,61 @@ sudo systemctl status webgl-mp      # verify it is running
 journalctl -u webgl-mp -f           # follow logs (shows LAN + tunnel URLs)
 ```
 
-Then reach the host at `http://<VM_IP>:4567/`.
-
 ---
 
 ### 4. Run in a Shipping Environment — Containers
 
-Containerizing gives you a reproducible, portable shipping artifact.
+A ready-to-use `Dockerfile`, `.dockerignore`, and `docker-compose.yml` are
+**already included** in the repo. You don't build the artifact separately — the
+image build does `npm run build` inside a multi-stage build for you.
 
-#### 4.1 `Dockerfile` (multi-stage)
-
-Create a `Dockerfile` at the project root:
-
-```dockerfile
-# ---- Build stage: compile the frontend ----
-FROM node:20-alpine AS build
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-# ---- Runtime stage: slim production image ----
-FROM node:20-alpine AS runtime
-WORKDIR /app
-ENV NODE_ENV=production
-ENV PORT=4567
-
-# Only production deps for the runtime
-COPY package*.json ./
-RUN npm ci --omit=dev
-
-# Bring over the compiled frontend + server + static assets
-COPY --from=build /app/dist ./dist
-COPY server ./server
-COPY public ./public
-
-EXPOSE 4567
-CMD ["node", "server/index.js"]
-```
-
-> The container runs the **plain server** (`server/index.js`), not the
-> Cloudflare Tunnel launcher, which is the correct choice behind an ingress /
-> reverse proxy. Expose the app publicly via your orchestrator's ingress
-> instead.
-
-#### 4.2 `.dockerignore`
-
-Create a `.dockerignore` so the build context stays small:
-
-```
-node_modules
-dist
-.git
-.vscode
-.idea
-*.log
-Plan
-.playwright-mcp
-```
-
-#### 4.3 Build and run with Docker
+#### 4.1 Docker — one command to build, one to run
 
 ```bash
-# Build the image
-docker build -t webgl-mp-controller:latest .
+npm run docker:build     # docker build -t webgl-mp-controller:latest .
+npm run docker:run       # runs detached, maps host:container 4567
 
-# Run it, mapping the container port to the host
-docker run -d --name webgl-mp -p 4567:4567 \
-  -e NODE_ENV=production -e PORT=4567 \
-  --restart unless-stopped \
-  webgl-mp-controller:latest
-
-# Follow logs
-docker logs -f webgl-mp
+docker logs -f webgl-mp  # follow logs
 ```
 
 Open `http://<DOCKER_HOST_IP>:4567/`.
 
-#### 4.4 Docker Compose
-
-Create `docker-compose.yml`:
-
-```yaml
-services:
-  webgl-mp-controller:
-    build: .
-    image: webgl-mp-controller:latest
-    ports:
-      - "4567:4567"
-    environment:
-      - NODE_ENV=production
-      - PORT=4567
-    restart: unless-stopped
-```
-
-Run it:
+#### 4.2 Docker Compose — single command, out of the box
 
 ```bash
-docker compose up -d --build
+npm run docker:up        # docker compose up -d --build
 docker compose logs -f
 ```
 
-#### 4.5 Notes for containers & orchestrators
+Stop it with `docker compose down`.
+
+#### 4.3 Building the container *from the packed artifact* (optional)
+
+If you'd rather build an image on a machine that only has the shipped
+`.tar.gz` (no source tree), extract it and build a tiny runtime-only image:
+
+```bash
+mkdir app && tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz -C app
+cd app
+
+cat > Dockerfile <<'EOF'
+FROM node:20-alpine
+WORKDIR /app
+ENV NODE_ENV=production PORT=4567
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY dist ./dist
+COPY server ./server
+COPY public ./public
+EXPOSE 4567
+CMD ["node", "server/index.js"]
+EOF
+
+docker build -t webgl-mp-controller:latest .
+docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped webgl-mp-controller:latest
+```
+
+#### 4.4 Notes for containers & orchestrators
 
 - **WebSockets:** Socket.io requires WebSocket upgrade support. If you front the
   container with Nginx/Traefik/ingress, enable WebSocket/`Upgrade` headers and
@@ -348,7 +302,10 @@ docker compose logs -f
 WebGL_Multiplayer_Controller/
 ├── server/
 │   ├── index.js       # Express + Socket.io relay server (port 4567)
+│   ├── launch.js      # start + auto Cloudflare Tunnel (npm run start)
 │   └── lanIp.js       # Detects the machine's LAN IPv4 address
+├── scripts/
+│   └── pack.js        # Build + bundle one shippable .tar.gz (npm run pack)
 ├── src/
 │   ├── main.jsx       # React entry + router (landing, /Game/:name, /Game/:name/:id)
 │   ├── games.js       # Re-exports the game registry + DEFAULT_GAME
@@ -366,6 +323,9 @@ WebGL_Multiplayer_Controller/
 │   └── styles/global.css
 ├── index.html
 ├── vite.config.js
+├── Dockerfile           # Multi-stage production image
+├── docker-compose.yml   # One-command container run
+├── .dockerignore
 └── package.json
 ```
 

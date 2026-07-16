@@ -1,0 +1,11 @@
+services:
+  webgl-mp-controller:
+    build: .
+    image: webgl-mp-controller:latest
+    container_name: webgl-mp
+    ports:
+      - "4567:4567"
+    environment:
+      - NODE_ENV=production
+      - PORT=4567
+    restart: unless-stopped

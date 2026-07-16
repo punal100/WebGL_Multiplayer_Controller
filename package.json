@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "server": "node server/index.js",
-    "start": "npm run build && node server/launch.js"
+    "start": "npm run build && node server/launch.js",
+    "pack": "node scripts/pack.js",
+    "docker:build": "docker build -t webgl-mp-controller:latest .",
+    "docker:run": "docker run -d --name webgl-mp -p 4567:4567 -e NODE_ENV=production --restart unless-stopped webgl-mp-controller:latest",
+    "docker:up": "docker compose up -d --build"
   },
   "dependencies": {
     "express": "^4.19.2",
