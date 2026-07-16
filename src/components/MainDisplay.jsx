@@ -42,6 +42,10 @@ export default function MainDisplay() {
     };
 
     const onInput = (payload) => {
+      // Defense-in-depth: ignore events that don't belong to this game's room
+      // (shouldn't happen since the server scopes relays per room, but guards
+      // against any stray cross-game input when navigating between games).
+      if (payload?.gameName && payload.gameName !== GAME_NAME) return;
       if (viewerRef.current) return;
       const { controllerId, button, state } = payload;
       const id = String(controllerId);
@@ -103,6 +107,9 @@ export default function MainDisplay() {
       socket.off('host_role', onHostRole);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
+      // Leave the room so this socket never lingers in a stale game's room
+      // (prevents another game's input from reaching us after navigating away).
+      socket.emit('leave_game', { gameName: GAME_NAME });
     };
   }, [GAME_NAME]);
 

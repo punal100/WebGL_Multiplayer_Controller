@@ -63,14 +63,40 @@ const roomState = new Map(); // room -> serialized state snapshot
 // There must be EXACTLY ONE simulator of the authoritative state per room.
 // Multiple main windows are allowed, but only the first (authoritative) host
 // simulates and broadcasts. Extra main windows join as "viewer" windows that
-// merely render the authoritative state. Without this, two independently
-// simulating hosts would broadcast two different sets of character data and
-// connected controllers would flicker between the two.
+// merely render. Without this, two independently simulating hosts would
+// broadcast two different sets of character data and connected controllers
+// would flicker between the two.
 const roomHost = new Map(); // room -> socketId of the authoritative host
+
+// Release a socket's authoritative-host claim on a room (when it leaves the
+// room or disconnects), so a surviving viewer can take over as the single
+// simulator and no stale host slot blocks a fresh authoritative host.
+function releaseHostSlot(room, socket) {
+  if (
+    room &&
+    socket.data.role === 'host' &&
+    socket.data.authoritative &&
+    roomHost.get(room) === socket.id
+  ) {
+    roomHost.delete(room);
+  }
+}
+
 
 io.on('connection', (socket) => {
   socket.on('join_game', ({ gameName, role, controllerId }) => {
     const room = gameName || 'TickTackToe';
+
+    // Switching rooms (e.g. navigating between games in the same browser
+    // tab, which shares one socket): fully leave the previous room first so
+    // the new game's handlers never receive the old game's events. Without
+    // this, one game's controller input can bleed into another game.
+    const prevRoom = socket.data.room;
+    if (prevRoom && prevRoom !== room) {
+      socket.leave(prevRoom);
+      releaseHostSlot(prevRoom, socket);
+    }
+
     socket.data.room = room;
     socket.data.role = role; // 'host' | 'controller'
     socket.data.controllerId = controllerId;
@@ -109,8 +135,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('controller_input', (payload) => {
-    const room = socket.data.room || payload?.gameName || 'TickTackToe';
-    // Relay only to the host of this room
+    // Relay only within the socket's ACTUAL joined room. Using socket.data.room
+    // (not the payload's gameName) is what guarantees a controller can't affect
+    // a game it has left, and that one game's input never reaches another.
+    const room = socket.data.room;
+    if (!room) return;
     socket.to(room).emit('controller_input', payload);
   });
 
@@ -118,7 +147,8 @@ io.on('connection', (socket) => {
   // presses to the single authoritative host so input works in ANY main
   // window while still keeping one source of truth.
   socket.on('host_key', (payload) => {
-    const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    const room = socket.data.room;
+    if (!room) return;
     const hostId = roomHost.get(room);
     if (hostId && hostId !== socket.id) {
       io.to(hostId).emit('host_key', payload);
@@ -130,7 +160,8 @@ io.on('connection', (socket) => {
   // Only the authoritative host's state is accepted — a viewer window must
   // never overwrite the single source of truth with its own inert copy.
   socket.on('game_state', (payload) => {
-    const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    const room = socket.data.room;
+    if (!room) return;
     if (socket.data.authoritative && roomHost.get(room) === socket.id) {
       roomState.set(room, payload.state); // persist across host reloads
       socket.to(room).emit('game_state', payload.state);
@@ -140,10 +171,22 @@ io.on('connection', (socket) => {
   // Host (or any client) requests a full reset of the room state. Only the
   // authoritative host may reset the single source of truth.
   socket.on('reset_game', (payload) => {
-    const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    const room = socket.data.room;
+    if (!room) return;
     if (!socket.data.authoritative || roomHost.get(room) !== socket.id) return;
     roomState.delete(room);
     io.to(room).emit('game_reset', { gameName: room });
+  });
+
+  // Explicitly leave the current room (used by clients on navigation/unmount
+  // so a socket never lingers in a stale room and receives another game's
+  // events). Releases any authoritative-host claim for that room.
+  socket.on('leave_game', () => {
+    const { room } = socket.data;
+    if (!room) return;
+    socket.leave(room);
+    releaseHostSlot(room, socket);
+    socket.data.room = null;
   });
 
   socket.on('disconnect', () => {
@@ -158,9 +201,7 @@ io.on('connection', (socket) => {
     } else if (role === 'host' && room) {
       // If the authoritative host left, release the slot so a surviving
       // viewer window can take over as the single simulator.
-      if (authoritative && roomHost.get(room) === socket.id) {
-        roomHost.delete(room);
-      }
+      releaseHostSlot(room, socket);
     }
   });
 });

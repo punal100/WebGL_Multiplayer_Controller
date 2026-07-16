@@ -62,6 +62,9 @@ export default function VirtualController() {
       socket.off('disconnect', onDisconnect);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
+      // Leave the room so this controller socket never lingers in a stale
+      // game's room after navigating away (prevents cross-game state).
+      socket.emit('leave_game', { gameName, controllerId: id });
     };
   }, [gameName, id]);
 

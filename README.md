@@ -112,6 +112,7 @@ WebGL_Multiplayer_Controller/
 - **Low-latency input** — Socket.io WebSocket relay, direct key synthesis.
 - **Connection indicators** — host shows `P1 Connected` / `P2 Connected`.
 - **Safe disconnect** — closing a phone releases all held keys (no stuck movement).
+- **Multiple games at once** — each game runs in its own isolated Socket.io room, so inputs from one game never affect another, and several games can run concurrently.
 - **PC settings overlay** — mouse/keyboard accessible for host config.
 - **Mobile-hardened UI** — `touch-action: none`, no scroll/zoom, fullscreen layout.
 
