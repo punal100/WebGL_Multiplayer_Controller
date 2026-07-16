@@ -326,11 +326,17 @@ docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped webgl-mp-con
 ## Run on E2E via a Container Instance (TIR "Own Container")
 
 E2E's **Instance with Your Own Container** flow
-(<https://docs.e2enetworks.com/docs/tir/Nodes/Node_Own_Container/>) launches an
-Ubuntu container instance that is a **real Docker host**. You build the image on
-your PC, push it to the E2E Container Registry, then `docker pull` and
-`docker run` it inside that instance — the image's own `ENTRYPOINT`/`CMD` is used
-normally, so no platform-specific start-command hacks are needed.
+(<https://docs.e2enetworks.com/docs/tir/Nodes/Node_Own_Container/>) launches your
+image **as the instance itself** — it is a container-native runtime, **not** a VM
+with a Docker daemon inside it. You do **not** run `docker` commands inside the
+instance. Instead, you push the image to the E2E Container Registry from your PC,
+then select it when creating the instance; E2E boots it directly using the
+image's `CMD` (`node server/launch.js`), so no start-command hacks are needed.
+
+> If you specifically want to run `docker` commands yourself, use a real
+> **E2E Virtual Machine** (MyAccount → VMs) and follow the VM flow in
+> [§3](#3-run-in-a-shipping-environment--virtual-machine) — the container
+> instance product has no Docker CLI installed.
 
 ### 1. Push the image to the E2E Container Registry (from your PC)
 
@@ -346,34 +352,52 @@ docker push registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
 Replace `<namespace>` with your E2E registry namespace (shown in the dashboard
 under **Integrations → E2E Container Registry**).
 
-### 2. Launch the container instance
+### 2. Launch the instance from your image
 
 In the TIR dashboard: **Create Instance → Custom Images → Private →** select your
-namespace and the `webgl-mp-controller:latest` image, then launch. This boots an
-Ubuntu instance with Docker available. Open it via **Jupyter Lab** or **SSH**.
+namespace and the `webgl-mp-controller:latest` image, then launch. E2E runs the
+image as the instance (no inner Docker). After it starts you can open **Jupyter
+Lab** or **SSH** to inspect it, and reach the app at the instance's IP.
 
-### 3. Pull and run inside the instance
+### 3. Access the app
 
-Once you're in the instance (SSH or a terminal), run:
+- Expose / allow inbound **port `4567`** in the instance's security/firewall
+  settings so phones can reach it.
+- Open `http://<INSTANCE_IP>:4567/`.
+- The server starts an auto Cloudflare Tunnel by default; set the environment
+  variable **`NO_TUNNEL=1`** (instance env settings) to run the plain server when
+  you expose it through your own ingress/reverse proxy.
+### 4. No-Docker option: tarball + run directly on the instance
+
+If you would rather not use the container registry / image path, the E2E
+container instance is just a Linux host — you can run the app directly with
+Node (no Docker needed). This reuses the distribution tarball from
+[§2](#2-take-a-distribution-build-one-command).
+
+**On your PC:**
 
 ```bash
-docker login registry.e2enetworks.net
-docker pull registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
-
-docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped \
-    registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
-
-docker logs -f webgl-mp      # follow logs (shows LAN + public tunnel URL)
+npm run pack
+# -> release/webgl-multiplayer-controller-1.0.0.tar.gz
 ```
 
-Then open `http://<INSTANCE_IP>:4567/`.
+Upload that one file to the instance (SCP, the JupyterLab upload UI, an SFTP
+client, or a cloud bucket). Then **on the instance** (SSH or JupyterLab
+terminal):
 
-- **Plain server (no auto tunnel):** add `-e NO_TUNNEL=1` if you expose the app
-  through your own ingress/reverse proxy.
-- **Expose port `4567`** in the instance's security/firewall settings so phones
-  can reach it.
-- **Architecture:** build with `--platform linux/amd64` (step 1) so the image
-  matches the E2E instance CPU.
+```bash
+mkdir -p ~/webgl-mp && tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz -C ~/webgl-mp
+cd ~/webgl-mp
+npm ci --omit=dev                 # install production deps only
+NODE_ENV=production npm run serve # server + Cloudflare Tunnel (public URL)
+# or, behind your own ingress/reverse proxy:
+NODE_ENV=production NO_TUNNEL=1 npm run server
+```
+
+Then open `http://<INSTANCE_IP>:4567/`. Expose port `4567` in the instance
+firewall. `npm run serve` prints the public `https://…trycloudflare.com` URL;
+`npm run server` runs the plain server. Use `nohup … &` or a `systemd`/`tmux`
+session to keep it running after you disconnect.
 
 ---
 
