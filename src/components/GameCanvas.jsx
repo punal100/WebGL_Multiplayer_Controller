@@ -5,6 +5,13 @@ import { vfx } from '../game/vfx.js';
 import { audio } from '../game/audio.js';
 import { getGameDef } from '../games.js';
 
+// Fixed logical arena size (simulation/coordinate space) for TankDuel. It is
+// independent of the canvas/window pixel size; renderState letterboxes it into
+// the canvas. Keeping this constant means the playfield never resizes or drifts
+// when the browser window changes.
+const ARENA_W = 1280;
+const ARENA_H = 720;
+
 // Host mode: the SINGLE authoritative simulator. Steps the game, draws it,
 // and broadcasts state snapshots (~30Hz) so controllers (and any extra
 // viewer main windows) stay in sync.
@@ -67,27 +74,24 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       if (inputModel === 'actions') {
         state = gameDef.engine.createInitialState();
       } else {
-        state = createInitialState(canvas.width, canvas.height);
+        // The simulation runs in a FIXED logical arena space (independent of the
+        // canvas/window size). renderState letterboxes this space into the canvas
+        // with a uniform scale, so the arena keeps a correct, stable size and
+        // stays centered no matter how the browser is resized. We no longer
+        // couple state.w/state.h to canvas pixels (that coupling made the arena
+        // shrink / drift toward the top-left on resize).
+        state = createInitialState(ARENA_W, ARENA_H);
       }
     }
 
     resize();
     // Observe the canvas box (not just window resize) so the drawing buffer
     // re-matches whenever the layout changes — including an orientation toggle
-    // that swaps the CSS class and alters the view's aspect ratio. Without
-    // this the stale buffer aspect would stretch/squish the rendered game.
+    // that swaps the CSS class and alters the view's aspect ratio. The arena
+    // space itself never changes; only the buffer/letterbox does.
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
     window.addEventListener('resize', resize);
-
-    // Re-seed dimensions on resize for host so coordinates stay consistent
-    const onResizeHost = () => {
-      if (mode === 'host' && inputModel === 'keys') {
-        state.w = canvas.width;
-        state.h = canvas.height;
-      }
-    };
-    window.addEventListener('resize', onResizeHost);
 
     if (mode === 'client' || mode === 'viewer') {
       // Neither client nor an extra viewer window ever simulates. They start
@@ -120,14 +124,11 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         if (state) {
           // Replay this snapshot's transient events ONCE as VFX + audio
           // (scaled to the local canvas), then draw the world + particles.
-          // Scale host-space event coords into this canvas's buffer space.
-          // Guard against zero-sized snapshots so scaling never yields Infinity.
-          const sw = state.w > 0 ? state.w : canvas.width || 1;
-          const sh = state.h > 0 ? state.h : canvas.height || 1;
-          const sx = canvas.width / sw;
-          const sy = canvas.height / sh;
+          // Spawn VFX in the snapshot's arena coordinate space (state.w/h);
+          // renderState maps that space into the centered, uniformly-scaled
+          // playfield box, so clients and host render particles identically.
           if (pendingEvents.length) {
-            vfx.handleEvents(pendingEvents, sx, sy);
+            vfx.handleEvents(pendingEvents, 1, 1);
             audio.handleEvents(pendingEvents);
             pendingEvents = [];
           }
@@ -142,7 +143,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         socket.off('game_state', onState);
         ro.disconnect();
         window.removeEventListener('resize', resize);
-        window.removeEventListener('resize', onResizeHost);
       };
     }
 
@@ -175,7 +175,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         next.scores = state?.scores || { X: 0, O: 0 };
         state = next;
       } else {
-        state = createInitialState(canvas.width, canvas.height);
+        state = createInitialState(ARENA_W, ARENA_H);
       }
       resumed = true;
     };
@@ -237,7 +237,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         window.removeEventListener('keydown', onKeyDown);
         ro.disconnect();
         window.removeEventListener('resize', resize);
-        window.removeEventListener('resize', onResizeHost);
         socket && socket.off('resume_state', onResume);
         socket && socket.off('game_reset', onReset);
         socket && socket.off('request_state', onRequestState);
@@ -304,7 +303,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener('resize', resize);
-      window.removeEventListener('resize', onResizeHost);
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
       socket && socket.off('resume_state', onResume);
