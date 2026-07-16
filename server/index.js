@@ -85,6 +85,13 @@ io.on('connection', (socket) => {
     socket.to(room).emit('controller_input', payload);
   });
 
+  // Host broadcasts authoritative game state; forward to everyone else
+  // in the room (the controllers) so all screens stay in sync.
+  socket.on('game_state', (payload) => {
+    const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    socket.to(room).emit('game_state', payload.state);
+  });
+
   socket.on('disconnect', () => {
     const { room, role, controllerId } = socket.data;
     if (role === 'controller' && room) {

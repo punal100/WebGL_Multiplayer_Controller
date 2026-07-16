@@ -98,7 +98,7 @@ export default function MainDisplay() {
         </button>
         <div className="display__title">{GAME_NAME} — 2 Player</div>
         <div className="display__game">
-          <GameCanvas windowRef={gameWindowRef} />
+          <GameCanvas mode="host" socket={socket} gameName={GAME_NAME} windowRef={gameWindowRef} />
         </div>
       </main>
 

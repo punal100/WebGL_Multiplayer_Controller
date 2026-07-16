@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { socket } from '../socket.js';
+import GameCanvas from './GameCanvas.jsx';
 
 const GAME_NAME = 'TickTackToe';
 
@@ -65,6 +66,9 @@ export default function VirtualController() {
     <div className="controller">
       <div className="controller__header">
         {gameName} · Player {id}
+      </div>
+      <div className="controller__view">
+        <GameCanvas mode="client" socket={socket} gameName={gameName} />
       </div>
       <div className="controller__body">
         <div className="dpad">

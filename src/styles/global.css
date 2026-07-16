@@ -179,6 +179,16 @@ body {
   font-size: 14px;
   color: var(--muted);
 }
+.controller__view {
+  width: 100%;
+  max-width: 520px;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #ffffff14;
+  flex: 0 0 auto;
+}
 .controller__body {
   flex: 1;
   display: flex;
