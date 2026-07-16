@@ -15,35 +15,57 @@ import { vfx } from './vfx.js';
 export function renderState(ctx, canvas, state, opts = {}) {
   const w = canvas.width;
   const h = canvas.height;
-  const sx = w / (state.w || w);
-  const sy = h / (state.h || h);
   const vfxLayer = opts.vfx || vfx;
   const shake = (state.shake || 0);
 
   ctx.save();
   ctx.clearRect(0, 0, w, h);
 
-  // --- Themed industrial battleground ---
+  // --- Themed industrial battleground (full-bleed backdrop) ---
   const bg = ctx.createLinearGradient(0, 0, 0, h);
   bg.addColorStop(0, '#161b26');
   bg.addColorStop(1, '#0d1119');
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, w, h);
 
-  // Subtle panel-tile texture.
+  // The simulation lives in a fixed state.w x state.h coordinate space. We map
+  // that space onto the canvas with a SINGLE uniform scale and center it, so the
+  // arena keeps its correct aspect ratio and stays centered no matter how the
+  // window is sized (instead of stretching non-uniformly or drifting to the
+  // top-left). All downstream draw code still uses sx/sy, so we set both to the
+  // same letterboxed scale and translate into the centered arena box.
+  const simW = state.w || w;
+  const simH = state.h || h;
+  const s = Math.min(w / simW, h / simH);
+  const sx = s;
+  const sy = s;
+  const ox = (w - simW * s) / 2;
+  const oy = (h - simH * s) / 2;
+  ctx.translate(ox, oy);
+
+  // Backdrop fill + texture only inside the actual arena box (so the playfield
+  // reads as a distinct, correctly-proportioned surface on any canvas shape).
   const tile = Math.max(28, Math.round(40 * sx));
+  ctx.save();
+  ctx.beginPath(); ctx.rect(0, 0, simW, simH); ctx.clip();
+  const abg = ctx.createLinearGradient(0, 0, 0, simH);
+  abg.addColorStop(0, '#161b26');
+  abg.addColorStop(1, '#0d1119');
+  ctx.fillStyle = abg;
+  ctx.fillRect(0, 0, simW, simH);
   ctx.strokeStyle = '#ffffff08';
   ctx.lineWidth = 1;
-  for (let x = 0; x < w; x += tile) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  for (let x = 0; x < simW; x += tile) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, simH); ctx.stroke();
   }
-  for (let y = 0; y < h; y += tile) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  for (let y = 0; y < simH; y += tile) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(simW, y); ctx.stroke();
   }
+  ctx.restore();
   // Faint hazard border.
   ctx.strokeStyle = '#ffb70322';
   ctx.lineWidth = Math.max(4, 6 * sx);
-  ctx.strokeRect(2, 2, w - 4, h - 4);
+  ctx.strokeRect(2, 2, simW - 4, simH - 4);
 
   // --- Barricades (destructible) ---
   for (const b of state.barricades || []) {
@@ -129,12 +151,16 @@ export function renderState(ctx, canvas, state, opts = {}) {
   }
 
   // --- Particles / screen shake (VFX layer) ---
+  // VFX particles are spawned in arena coordinates, so they live inside the
+  // same centered/uniformly-scaled transform as the playfield.
   vfxLayer.draw(ctx, opts.dtSec || 0.016, shake);
+
+  // Leave the arena transform so the HUD sits in screen space (top corners of
+  // the canvas), independent of the centered playfield box.
+  ctx.restore();
 
   // --- HUD: scores + cooldown readouts ---
   drawHUD(ctx, w, h, state);
-
-  ctx.restore();
 }
 
 function drawTank(ctx, x, y, hullAngle, turretAngle, color, sx, dashing) {
@@ -220,11 +246,16 @@ function drawHUD(ctx, w, h, state) {
     ctx.font = `700 ${fScore}px system-ui`;
     ctx.fillText(`P${i + 1}  ${p.score}`, ax, pad);
 
-    // Cooldown pills
+    // Cooldown pills. The live (host) player stores cooldowns on
+    // `abilities.{Dash,Mine,SpecialFire}Cooldown`, while a serialized snapshot
+    // (sent to clients) flattens them onto `dash`/`mine`/`special`. Read from
+    // whichever shape this state uses so the HUD is correct on BOTH the host
+    // main window and the remote controllers.
+    const ab = p.abilities || {};
     const cds = [
-      { label: 'DASH', v: p.dash ?? 0 },
-      { label: 'MINE', v: p.mine ?? 0 },
-      { label: 'RICO', v: p.special ?? 0 },
+      { label: 'DASH', v: p.dash ?? ab.DashCooldown ?? 0 },
+      { label: 'MINE', v: p.mine ?? ab.MineCooldown ?? 0 },
+      { label: 'RICO', v: p.special ?? ab.SpecialFireCooldown ?? 0 },
     ];
     let cy = pad + fScore + 6;
     const pillW = Math.max(64, w * 0.09);
