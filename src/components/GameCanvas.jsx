@@ -59,11 +59,24 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
 
     // Host mode
     const keys = new Set();
-    const onDown = (e) => keys.add(e.key.toLowerCase());
-    const onUp = (e) => keys.delete(e.key.toLowerCase());
+    const onDown = (e) => { keys.add(e.key.toLowerCase()); if (typeof window !== 'undefined') window.__hostKeys = [...keys]; };
+    const onUp = (e) => { keys.delete(e.key.toLowerCase()); if (typeof window !== 'undefined') window.__hostKeys = [...keys]; };
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
     if (windowRef) windowRef.current = window;
+
+    // Resume from server-persisted state (so a main-page reload keeps the
+    // current positions/rotations/score instead of resetting).
+    const onResume = (snap) => {
+      state = snap;
+    };
+    socket && socket.on('resume_state', onResume);
+
+    // Reset button: reseed the authoritative state.
+    const onReset = () => {
+      state = createInitialState(canvas.width, canvas.height);
+    };
+    socket && socket.on('game_reset', onReset);
 
     let running = true;
     let last = performance.now();
@@ -79,7 +92,9 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
 
       if (socket && now - lastEmit >= 33) {
         lastEmit = now;
-        socket.emit('game_state', { gameName, state: serialize(state) });
+        const snap = serialize(state);
+        socket.emit('game_state', { gameName, state: snap });
+        if (mode === 'host') window.__hostState = snap;
       }
       requestAnimationFrame(loop);
     }
@@ -92,6 +107,8 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       window.removeEventListener('resize', onResizeHost);
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
+      socket && socket.off('resume_state', onResume);
+      socket && socket.off('game_reset', onReset);
       if (windowRef) windowRef.current = null;
     };
   }, [mode, socket, gameName, windowRef]);

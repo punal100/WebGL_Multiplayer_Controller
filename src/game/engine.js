@@ -2,6 +2,13 @@
 // keys, advance state by dt (ms) and return a serializable snapshot.
 // Runs ONLY on the host. Controllers receive snapshots and just render them.
 
+// Static per-player control mappings. Kept OUT of the serialized state so
+// resumed/persisted snapshots (which omit it) still simulate correctly.
+export const PLAYER_CONTROLS = [
+  { up: 'w', down: 's', left: 'a', right: 'd', fire: 'q' },
+  { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', fire: ',' },
+];
+
 export function createInitialState(w, h) {
   return {
     w,
@@ -12,7 +19,6 @@ export function createInitialState(w, h) {
         y: h * 0.5,
         angle: 0,
         color: '#4cc9f0',
-        controls: { up: 'w', down: 's', left: 'a', right: 'd', fire: 'q' },
         cooldown: 0,
         score: 0,
         alive: true,
@@ -23,7 +29,6 @@ export function createInitialState(w, h) {
         y: h * 0.5,
         angle: Math.PI,
         color: '#f72585',
-        controls: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', fire: ',' },
         cooldown: 0,
         score: 0,
         alive: true,
@@ -60,28 +65,29 @@ export function step(state, keys, dt) {
   const turn = 0.045 * (dt / 16);
   const speed = 2.2 * (dt / 16);
 
-  for (const p of state.players) {
+  state.players.forEach((p, idx) => {
+    const c = PLAYER_CONTROLS[idx];
     if (!p.alive) {
       p.respawn -= dt;
       if (p.respawn <= 0) {
-        p.x = p === state.players[0] ? w * 0.3 : w * 0.7;
+        p.x = idx === 0 ? w * 0.3 : w * 0.7;
         p.y = h * 0.5;
-        p.angle = p === state.players[0] ? 0 : Math.PI;
+        p.angle = idx === 0 ? 0 : Math.PI;
         p.alive = true;
       }
-      continue;
+      return;
     }
-    if (keys.has(p.controls.left)) p.angle -= turn;
-    if (keys.has(p.controls.right)) p.angle += turn;
-    if (keys.has(p.controls.up)) {
+    if (keys.has(c.left)) p.angle -= turn;
+    if (keys.has(c.right)) p.angle += turn;
+    if (keys.has(c.up)) {
       p.x += Math.cos(p.angle) * speed;
       p.y += Math.sin(p.angle) * speed;
     }
-    if (keys.has(p.controls.down)) {
+    if (keys.has(c.down)) {
       p.x -= Math.cos(p.angle) * speed;
       p.y -= Math.sin(p.angle) * speed;
     }
-    if (keys.has(p.controls.fire) && p.cooldown <= 0) {
+    if (keys.has(c.fire) && p.cooldown <= 0) {
       p.cooldown = 28;
       const bs = 7;
       state.bullets.push({
@@ -98,7 +104,7 @@ export function step(state, keys, dt) {
 
     p.x = Math.max(16, Math.min(w - 16, p.x));
     p.y = Math.max(16, Math.min(h - 16, p.y));
-  }
+  });
 
   for (let i = state.bullets.length - 1; i >= 0; i--) {
     const b = state.bullets[i];

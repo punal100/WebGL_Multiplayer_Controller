@@ -71,6 +71,10 @@ export default function MainDisplay() {
     };
   }, []);
 
+  const resetGame = () => {
+    socket.emit('reset_game', { gameName: GAME_NAME });
+  };
+
   const base = origin || `http://${lanIp}:${port}`;
   const c1Url = `${base}/${GAME_NAME}/1`;
   const c2Url = `${base}/${GAME_NAME}/2`;
@@ -93,9 +97,14 @@ export default function MainDisplay() {
       </aside>
 
       <main className="display__center">
-        <button className="settings-btn" onClick={() => setShowSettings(true)}>
-          Settings
-        </button>
+        <div className="center-actions">
+          <button className="settings-btn" onClick={() => setShowSettings(true)}>
+            Settings
+          </button>
+          <button className="reset-btn" onClick={resetGame}>
+            Reset
+          </button>
+        </div>
         <div className="display__title">{GAME_NAME} — 2 Player</div>
         <div className="display__game">
           <GameCanvas mode="host" socket={socket} gameName={GAME_NAME} windowRef={gameWindowRef} />
@@ -141,6 +150,9 @@ export default function MainDisplay() {
               <span>Player 2</span>
               <span>{status[2] ? 'Connected' : 'Offline'}</span>
             </div>
+            <button className="overlay__reset" onClick={resetGame}>
+              Reset Game
+            </button>
             <button
               className="overlay__close"
               onClick={() => setShowSettings(false)}

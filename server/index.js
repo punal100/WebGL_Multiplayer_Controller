@@ -53,6 +53,11 @@ app.get(/.*/, (req, res) => {
 // Track connected controllers per room
 const roomControllers = new Map(); // room -> Map(controllerId -> socketId)
 
+// Authoritative game state per room, persisted on the server so it survives
+// a main-page (host) reload. Seeded by the first host; updated by each host
+// broadcast; sent back to a host that (re)joins.
+const roomState = new Map(); // room -> serialized state snapshot
+
 io.on('connection', (socket) => {
   socket.on('join_game', ({ gameName, role, controllerId }) => {
     const room = gameName || 'TickTackToe';
@@ -76,6 +81,10 @@ io.on('connection', (socket) => {
           socket.emit('controller_status', { controllerId: id, connected: true });
         }
       }
+      // Resume the host from the persisted state so a reload doesn't reset
+      // positions/rotations/score.
+      const saved = roomState.get(room);
+      if (saved) socket.emit('resume_state', saved);
     }
   });
 
@@ -85,11 +94,19 @@ io.on('connection', (socket) => {
     socket.to(room).emit('controller_input', payload);
   });
 
-  // Host broadcasts authoritative game state; forward to everyone else
-  // in the room (the controllers) so all screens stay in sync.
+  // Host broadcasts authoritative game state; store it and forward to
+  // everyone else in the room (the controllers) so all screens stay in sync.
   socket.on('game_state', (payload) => {
     const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    roomState.set(room, payload.state); // persist across host reloads
     socket.to(room).emit('game_state', payload.state);
+  });
+
+  // Host (or any client) requests a full reset of the room state.
+  socket.on('reset_game', (payload) => {
+    const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    roomState.delete(room);
+    io.to(room).emit('game_reset', { gameName: room });
   });
 
   socket.on('disconnect', () => {
