@@ -9,6 +9,7 @@ const GAME_NAME = 'TickTackToe';
 export default function MainDisplay() {
   const [lanIp, setLanIp] = useState('localhost');
   const [port, setPort] = useState(4567);
+  const [origin, setOrigin] = useState('');
   const [status, setStatus] = useState({ 1: false, 2: false });
   const [showSettings, setShowSettings] = useState(false);
   const gameWindowRef = useRef(null);
@@ -20,6 +21,7 @@ export default function MainDisplay() {
       .then((c) => {
         setLanIp(c.lanIp);
         setPort(c.port);
+        setOrigin(c.origin || `http://${c.lanIp}:${c.port}`);
       })
       .catch(() => {});
 
@@ -69,8 +71,9 @@ export default function MainDisplay() {
     };
   }, []);
 
-  const c1Url = `http://${lanIp}:${port}/${GAME_NAME}/1`;
-  const c2Url = `http://${lanIp}:${port}/${GAME_NAME}/2`;
+  const base = origin || `http://${lanIp}:${port}`;
+  const c1Url = `${base}/${GAME_NAME}/1`;
+  const c2Url = `${base}/${GAME_NAME}/2`;
 
   return (
     <div className="display">
@@ -123,12 +126,12 @@ export default function MainDisplay() {
               <span>{GAME_NAME}</span>
             </div>
             <div className="overlay__row">
-              <span>LAN IP</span>
-              <span>{lanIp}</span>
+              <span>Public URL</span>
+              <span style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>{base}</span>
             </div>
             <div className="overlay__row">
-              <span>Port</span>
-              <span>{port}</span>
+              <span>LAN IP</span>
+              <span>{lanIp}:{port}</span>
             </div>
             <div className="overlay__row">
               <span>Player 1</span>

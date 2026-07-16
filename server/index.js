@@ -21,12 +21,30 @@ console.log(`Controller 2:  http://${lanIp}:${PORT}/TickTackToe/2\n`);
 
 // Expose LAN info to the frontend
 app.get('/api/config', (req, res) => {
-  res.json({ lanIp, port: PORT });
+  const origin = getPublicOrigin(req);
+  res.json({ lanIp, port: PORT, origin });
 });
 
 // Serve the built React app
 const distPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(distPath));
+
+// Resolve the best externally-reachable origin.
+// When behind a tunnel (cloudflared/ngrok) or reverse proxy, use the
+// forwarded proto+host so QR codes point at the public URL automatically.
+function getPublicOrigin(req) {
+  const fwdHost = req.headers['x-forwarded-host'];
+  const proto = req.headers['x-forwarded-proto'] || (fwdHost ? 'https' : 'http');
+  if (fwdHost) {
+    return `${proto}://${fwdHost.split(',')[0].trim()}`;
+  }
+  const host = req.headers.host;
+  if (host && host !== `localhost:${PORT}` && !host.startsWith(`${lanIp}:`)) {
+    // Already accessed via a public/LAN host header
+    return `${proto}://${host}`;
+  }
+  return `http://${lanIp}:${PORT}`;
+}
 
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'));
