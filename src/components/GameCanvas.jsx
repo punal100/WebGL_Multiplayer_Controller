@@ -34,7 +34,19 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
         window.__clientState = snap;
       };
       socket.on('game_state', onState);
+
+      // Client has no simulation; just repaint the latest snapshot every
+      // frame so the canvas always reflects the authoritative host state.
+      let running = true;
+      const raf = requestAnimationFrame(function draw() {
+        if (!running) return;
+        if (state) renderState(ctx, canvas, state);
+        requestAnimationFrame(draw);
+      });
+
       return () => {
+        running = false;
+        cancelAnimationFrame(raf);
         socket.off('game_state', onState);
         window.removeEventListener('resize', resize);
         window.removeEventListener('resize', onResizeHost);
