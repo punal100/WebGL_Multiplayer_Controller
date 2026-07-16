@@ -330,10 +330,15 @@ body {
 }
 .controller--horizontal .controller__view {
   flex: 0 0 auto;
-  width: 100%;
+  /* Keep a true 16:9 box so the game isn't stretched: let the aspect ratio
+     drive sizing and shrink to fit whichever constraint (width or height)
+     is tighter, instead of forcing full width then capping height. */
+  width: auto;
+  height: auto;
   max-width: 100%;
   max-height: 42%;
   aspect-ratio: 16 / 9;
+  align-self: center;
 }
 .controller--horizontal .controller__body {
   flex: 1 1 auto;

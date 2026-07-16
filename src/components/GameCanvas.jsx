@@ -19,8 +19,13 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     function resize() {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(300, rect.width * dpr);
-      canvas.height = Math.max(200, rect.height * dpr);
+      // Match the drawing buffer to the element's real size (including its
+      // device pixel ratio) so the game is never stretched, even when the
+      // container has an unusual aspect ratio (e.g. the controller's
+      // horizontal view). Avoid enforcing a minimum that would distort the
+      // buffer's aspect ratio relative to the box.
+      canvas.width = Math.max(1, Math.round(rect.width * dpr));
+      canvas.height = Math.max(1, Math.round(rect.height * dpr));
     }
     resize();
     window.addEventListener('resize', resize);
