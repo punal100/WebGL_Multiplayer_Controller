@@ -323,203 +323,57 @@ docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped webgl-mp-con
 
 ---
 
-## Build Image on Your PC, Run on a Remote Docker / VM
+## Run on E2E via a Container Instance (TIR "Own Container")
 
-The sections above build the image **on** the destination machine. If you'd
-rather **build the image once on your own PC** (where you have the full source
-tree and a GPU/fast CPU) and then **move the finished image to a VM or a
-containerized Docker VM** to run it, this section is for you. The idea is:
+E2E's **Instance with Your Own Container** flow
+(<https://docs.e2enetworks.com/docs/tir/Nodes/Node_Own_Container/>) launches an
+Ubuntu container instance that is a **real Docker host**. You build the image on
+your PC, push it to the E2E Container Registry, then `docker pull` and
+`docker run` it inside that instance — the image's own `ENTRYPOINT`/`CMD` is used
+normally, so no platform-specific start-command hacks are needed.
 
-> **Build here, ship the image, run there** — you never move source or rebuild on
-> the target.
-
----
-
-### A. Build the image on your PC
-
-You can build the image on your PC exactly as in §4.1, or produce a
-**portable archive** of the image that you can copy anywhere.
-
-#### A.1 Option 1 — push/pull from a registry (easiest if both hosts share a registry)
-
-This example uses **E2E Networks' container registry** (`registry.e2enetworks.net`).
-The flow is: log in from your PC → tag the built image → push it → then pull and
-run it on the target VM (which also logs in to the same registry).
-
-**Step 1: Build the image on your PC**
+### 1. Push the image to the E2E Container Registry (from your PC)
 
 ```bash
-docker build -t webgl-mp-controller:latest .
-```
+# Build for the correct architecture (E2E instances are linux/amd64)
+docker build --platform linux/amd64 -t webgl-mp-controller:latest .
 
-**Step 2: Log in to the E2E registry from your PC**
-
-```bash
-docker login registry.e2enetworks.net
-```
-
-Enter the registry username and password provided by E2E. If your account uses a
-different registry hostname, replace `registry.e2enetworks.net` with the hostname
-shown in your dashboard.
-
-**Step 3: Tag the image you want to publish**
-
-Replace `<namespace>` with your E2E registry namespace:
-
-```bash
-docker tag webgl-mp-controller:latest registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
-```
-
-**Step 4: Push the image you tagged**
-
-```bash
+docker login registry.e2enetworks.net        # E2E registry credentials
+docker tag  webgl-mp-controller:latest registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
 docker push registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
 ```
 
-**Step 5: Pull and run on the target VM / containerized Docker VM**
+Replace `<namespace>` with your E2E registry namespace (shown in the dashboard
+under **Integrations → E2E Container Registry**).
 
-On the target (which also has Docker + network access to the registry):
+### 2. Launch the container instance
+
+In the TIR dashboard: **Create Instance → Custom Images → Private →** select your
+namespace and the `webgl-mp-controller:latest` image, then launch. This boots an
+Ubuntu instance with Docker available. Open it via **Jupyter Lab** or **SSH**.
+
+### 3. Pull and run inside the instance
+
+Once you're in the instance (SSH or a terminal), run:
 
 ```bash
-docker login registry.e2enetworks.net        # same E2E credentials
+docker login registry.e2enetworks.net
 docker pull registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
+
 docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped \
     registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
 
 docker logs -f webgl-mp      # follow logs (shows LAN + public tunnel URL)
-sudo ufw allow 4567/tcp      # open the firewall port, if needed
 ```
 
-> Prefer a different registry (Docker Hub, GHCR, a self-hosted registry)? The
-> steps are identical — just swap `registry.e2enetworks.net/<namespace>` for your
-> registry host/path.
+Then open `http://<INSTANCE_IP>:4567/`.
 
-#### A.2 Option 2 — export/import as a file (no registry needed)
-
-This is the "download the image and run it" flow: the PC builds the image and
-saves it to a single file; you copy that file to the target VM and load it.
-
-```bash
-# On your PC — build, then save the image to one tarball
-docker build -t webgl-mp-controller:latest .
-docker save webgl-mp-controller:latest | gzip > webgl-mp-controller.tar.gz
-# -> webgl-mp-controller.tar.gz  (copy this to the VM)
-```
-
-> Use `docker save` (not `docker export`): `save` preserves the full image with
-> all layers and tags so it can be loaded as a runnable image, whereas `export`
-> only dumps a container's filesystem.
-
----
-
-### B. Copy the image to the target (VM or containerized Docker VM)
-
-Transfer the one file using any method — `scp`, an SFTP client, a cloud bucket,
-or a USB stick. Example with `scp` from your PC:
-
-```bash
-scp webgl-mp-controller.tar.gz user@<VM_IP>:/tmp/
-```
-
-> A "containerized Docker VM" is simply a VM (e.g. Ubuntu Server, a cloud
-> instance, or a bare-metal box) that has the **Docker Engine installed** — the
-> steps below are identical whether the Docker host is your PC, a local VM, or a
-> remote/cloud VM.
-
----
-
-### C. Load and run on the target
-
-On the VM (which has Docker installed), load the image from the tarball and run
-it. **No source tree, no `npm install`, no build step** — just the image.
-
-```bash
-# On the VM
-docker load < /tmp/webgl-mp-controller.tar.gz
-docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped \
-    webgl-mp-controller:latest
-
-docker logs -f webgl-mp      # follow logs (shows LAN + public tunnel URL)
-sudo ufw allow 4567/tcp      # open the firewall port, if needed
-```
-
-Then open `http://<VM_IP>:4567/`.
-
-#### C.1 Plain server (no auto tunnel)
-
-If the VM sits behind your own ingress/reverse proxy, disable the built-in
-Cloudflare Tunnel:
-
-```bash
-docker run -d --name webgl-mp -p 4567:4567 -e NO_TUNNEL=1 \
-    --restart unless-stopped webgl-mp-controller:latest
-```
-
----
-
-### D. Run via Docker Compose on the target
-
-If you prefer Compose, copy just the `docker-compose.yml` (it references the
-image by tag, which you've already loaded) to the VM:
-
-```bash
-scp docker-compose.yml user@<VM_IP>:/opt/webgl-mp-controller/
-ssh user@<VM_IP> "cd /opt/webgl-mp-controller && docker compose up -d"
-```
-
-> Add `NO_TUNNEL: 1` to the compose `environment:` block to disable the tunnel.
-> Stop with `docker compose down`.
-
----
-
-### E. Notes (same as in-container concerns in §4.4)
-
-- **Architecture match:** `docker save` images are architecture-specific. If your
-  PC is `amd64` and the VM is `arm64` (e.g. an Apple Silicon or Graviton VM),
-  build with the correct target platform, e.g.
-  `docker build --platform linux/amd64 -t webgl-mp-controller:latest .`, or build
-  directly on the target architecture.
-- **Tunnel vs. ingress:** set `NO_TUNNEL=1` when exposing via your own proxy/ingress.
-- **WebSockets:** enable `Upgrade` headers and disable buffering on `/socket.io`
-  if you front the container with a proxy.
-- **Health check:** `GET /api/config` returns JSON — use it as a liveness probe.
-
-### F. Troubleshooting — `exec /etc/config/nb_public_image_setup.sh: no such file or directory`
-
-If the Pod **crashes in a restart loop** with:
-
-```text
-exec /etc/config/nb_public_image_setup.sh: no such file or directory
-```
-
-…the E2E Networks Pod runtime **defaults the container start command** to that
-path (it lives in E2E's own base images, not ours). Even after we ship a shim
-at that path, E2E attaches a config volume that **shadows `/etc/config` at
-runtime**, so the file is not visible inside the running container and execve
-still fails. The image itself is fine — this is purely the platform's default
-command + volume mount.
-
-**Fix (do this in the E2E Pod UI):** override the **Start Command / Command**
-field (currently auto-filled with `/etc/config/nb_public_image_setup.sh`).
-Pick one:
-
-- **Leave it empty** → the image's own `CMD` (`node server/launch.js`) runs.
-- **Or set it explicitly** to:
-
-  ```text
-  node server/launch.js
-  ```
-
-  (add the env var `NO_TUNNEL=1` if you expose the app through your own
-  ingress/reverse proxy instead of the built-in Cloudflare Tunnel).
-
-After changing the command, **delete and recreate the Pod** (a plain restart
-may reuse the cached container spec). The container will then boot the server
-directly without touching `/etc/config`.
-
-> The image also ships a `/etc/config/nb_public_image_setup.sh` + `/init` shim
-> as a belt-and-suspenders fallback for platforms that do not shadow that path,
-> but on E2E you must override the command as shown above.
+- **Plain server (no auto tunnel):** add `-e NO_TUNNEL=1` if you expose the app
+  through your own ingress/reverse proxy.
+- **Expose port `4567`** in the instance's security/firewall settings so phones
+  can reach it.
+- **Architecture:** build with `--platform linux/amd64` (step 1) so the image
+  matches the E2E instance CPU.
 
 ---
 
