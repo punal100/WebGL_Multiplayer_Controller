@@ -30,16 +30,16 @@ Built with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io).
 
 ## Player Key Mapping
 
-| Button | Player 1 | Player 2 |
-|--------|----------|----------|
-| Up     | `W`      | `ArrowUp` |
-| Down   | `S`      | `ArrowDown` |
-| Left   | `A`      | `ArrowLeft` |
+| Button | Player 1 | Player 2     |
+| ------ | -------- | ------------ |
+| Up     | `W`      | `ArrowUp`    |
+| Down   | `S`      | `ArrowDown`  |
+| Left   | `A`      | `ArrowLeft`  |
 | Right  | `D`      | `ArrowRight` |
-| A      | `Q`      | `,` |
-| B      | `E`      | `.` |
-| X      | `R`      | `/` |
-| Y      | `F`      | `'` |
+| A      | `Q`      | `,`          |
+| B      | `E`      | `.`          |
+| X      | `R`      | `/`          |
+| Y      | `F`      | `'`          |
 
 ---
 
@@ -70,23 +70,25 @@ Controller 2:  http://192.168.1.8:4567/Game/TankDuel/2
 
 > **Deploying to a server?** Skip the local flow and jump to
 > **[Production / Shipping Deployment](#production--shipping-deployment)** for
-> distribution builds and running on a VM or in containers.
+> distribution builds and running on a VM or in containers. Want to **build the
+> image on your PC and run it on a remote VM/Docker VM** instead? See
+> **[Build Image on Your PC, Run on a Remote Docker / VM](#build-image-on-your-pc-run-on-a-remote-docker--vm)**.
 
 ---
 
 ## Scripts
 
-| Command           | Description                                              |
-|-------------------|----------------------------------------------------------|
-| `npm run dev`     | Vite dev server with proxy to the backend (hot reload). |
-| `npm run build`   | Build the React app into `dist/`.                        |
-| `npm run server`  | Run the Express + Socket.io server (no tunnel).          |
-| `npm run serve`   | Run the server **+** auto Cloudflare Tunnel (no rebuild — for a packed/distribution build). |
-| `npm run start`   | `build` then server + tunnel — one command to go live locally. |
-| `npm run pack`    | Build + bundle a single shippable `.tar.gz` in `release/`. |
-| `npm run docker:build` | Build the production Docker image.                  |
-| `npm run docker:run`   | Run the built image (maps port 4567).              |
-| `npm run docker:up`    | Build + run via Docker Compose (detached).         |
+| Command                | Description                                                                                 |
+| ---------------------- | ------------------------------------------------------------------------------------------- |
+| `npm run dev`          | Vite dev server with proxy to the backend (hot reload).                                     |
+| `npm run build`        | Build the React app into `dist/`.                                                           |
+| `npm run server`       | Run the Express + Socket.io server (no tunnel).                                             |
+| `npm run serve`        | Run the server **+** auto Cloudflare Tunnel (no rebuild — for a packed/distribution build). |
+| `npm run start`        | `build` then server + tunnel — one command to go live locally.                              |
+| `npm run pack`         | Build + bundle a single shippable `.tar.gz` in `release/`.                                  |
+| `npm run docker:build` | Build the production Docker image.                                                          |
+| `npm run docker:run`   | Run the built image (maps port 4567).                                                       |
+| `npm run docker:up`    | Build + run via Docker Compose (detached).                                                  |
 
 ---
 
@@ -100,10 +102,10 @@ This section explains how to take a **distribution build** and run it in a
 
 The server reads the following variables (all optional, with sane defaults):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PORT`   | `4567`  | TCP port the server listens on. |
-| `NODE_ENV` | *(unset)* | Set to `production` in shipping environments. |
+| Variable   | Default   | Description                                   |
+| ---------- | --------- | --------------------------------------------- |
+| `PORT`     | `4567`    | TCP port the server listens on.               |
+| `NODE_ENV` | _(unset)_ | Set to `production` in shipping environments. |
 
 > The server also honors `X-Forwarded-Host` / `X-Forwarded-Proto` headers, so
 > it produces correct public QR-code URLs when placed behind a reverse proxy,
@@ -192,7 +194,7 @@ Then reach the host at `http://<VM_IP>:4567/`.
 
 > `npm run server` = plain server. `npm run serve` = server **+** auto Cloudflare
 > Tunnel (no rebuild — safe for a distribution build). Do **not** use `npm run
-> start` on a packed build: it re-runs `npm run build`, which needs the source
+start` on a packed build: it re-runs `npm run build`, which needs the source
 > tree and dev tooling that a distribution build intentionally omits.
 > The bundled tunnel auto-installer downloads the Windows binary; on
 > Linux install `cloudflared` from your package manager first so it's on `PATH`.
@@ -268,7 +270,7 @@ docker compose logs -f
 Stop it with `docker compose down`. (Add `NO_TUNNEL=1` to the compose
 `environment:` block to disable the tunnel.)
 
-#### 4.3 Building the container *from the packed artifact* (optional)
+#### 4.3 Building the container _from the packed artifact_ (optional)
 
 If you'd rather build an image on a machine that only has the shipped
 `.tar.gz` (no source tree), extract it and build a tiny runtime-only image.
@@ -318,6 +320,169 @@ docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped webgl-mp-con
 - **QR codes:** Set your public hostname via the reverse proxy so
   `X-Forwarded-Host`/`X-Forwarded-Proto` are passed through — the QR codes then
   point at the real public URL automatically.
+
+---
+
+## Build Image on Your PC, Run on a Remote Docker / VM
+
+The sections above build the image **on** the destination machine. If you'd
+rather **build the image once on your own PC** (where you have the full source
+tree and a GPU/fast CPU) and then **move the finished image to a VM or a
+containerized Docker VM** to run it, this section is for you. The idea is:
+
+> **Build here, ship the image, run there** — you never move source or rebuild on
+> the target.
+
+---
+
+### A. Build the image on your PC
+
+You can build the image on your PC exactly as in §4.1, or produce a
+**portable archive** of the image that you can copy anywhere.
+
+#### A.1 Option 1 — push/pull from a registry (easiest if both hosts share a registry)
+
+This example uses **E2E Networks' container registry** (`registry.e2enetworks.net`).
+The flow is: log in from your PC → tag the built image → push it → then pull and
+run it on the target VM (which also logs in to the same registry).
+
+**Step 1: Build the image on your PC**
+
+```bash
+docker build -t webgl-mp-controller:latest .
+```
+
+**Step 2: Log in to the E2E registry from your PC**
+
+```bash
+docker login registry.e2enetworks.net
+```
+
+Enter the registry username and password provided by E2E. If your account uses a
+different registry hostname, replace `registry.e2enetworks.net` with the hostname
+shown in your dashboard.
+
+**Step 3: Tag the image you want to publish**
+
+Replace `<namespace>` with your E2E registry namespace:
+
+```bash
+docker tag webgl-mp-controller:latest registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
+```
+
+**Step 4: Push the image you tagged**
+
+```bash
+docker push registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
+```
+
+**Step 5: Pull and run on the target VM / containerized Docker VM**
+
+On the target (which also has Docker + network access to the registry):
+
+```bash
+docker login registry.e2enetworks.net        # same E2E credentials
+docker pull registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
+docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped \
+    registry.e2enetworks.net/<namespace>/webgl-mp-controller:latest
+
+docker logs -f webgl-mp      # follow logs (shows LAN + public tunnel URL)
+sudo ufw allow 4567/tcp      # open the firewall port, if needed
+```
+
+> Prefer a different registry (Docker Hub, GHCR, a self-hosted registry)? The
+> steps are identical — just swap `registry.e2enetworks.net/<namespace>` for your
+> registry host/path.
+
+#### A.2 Option 2 — export/import as a file (no registry needed)
+
+This is the "download the image and run it" flow: the PC builds the image and
+saves it to a single file; you copy that file to the target VM and load it.
+
+```bash
+# On your PC — build, then save the image to one tarball
+docker build -t webgl-mp-controller:latest .
+docker save webgl-mp-controller:latest | gzip > webgl-mp-controller.tar.gz
+# -> webgl-mp-controller.tar.gz  (copy this to the VM)
+```
+
+> Use `docker save` (not `docker export`): `save` preserves the full image with
+> all layers and tags so it can be loaded as a runnable image, whereas `export`
+> only dumps a container's filesystem.
+
+---
+
+### B. Copy the image to the target (VM or containerized Docker VM)
+
+Transfer the one file using any method — `scp`, an SFTP client, a cloud bucket,
+or a USB stick. Example with `scp` from your PC:
+
+```bash
+scp webgl-mp-controller.tar.gz user@<VM_IP>:/tmp/
+```
+
+> A "containerized Docker VM" is simply a VM (e.g. Ubuntu Server, a cloud
+> instance, or a bare-metal box) that has the **Docker Engine installed** — the
+> steps below are identical whether the Docker host is your PC, a local VM, or a
+> remote/cloud VM.
+
+---
+
+### C. Load and run on the target
+
+On the VM (which has Docker installed), load the image from the tarball and run
+it. **No source tree, no `npm install`, no build step** — just the image.
+
+```bash
+# On the VM
+docker load < /tmp/webgl-mp-controller.tar.gz
+docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped \
+    webgl-mp-controller:latest
+
+docker logs -f webgl-mp      # follow logs (shows LAN + public tunnel URL)
+sudo ufw allow 4567/tcp      # open the firewall port, if needed
+```
+
+Then open `http://<VM_IP>:4567/`.
+
+#### C.1 Plain server (no auto tunnel)
+
+If the VM sits behind your own ingress/reverse proxy, disable the built-in
+Cloudflare Tunnel:
+
+```bash
+docker run -d --name webgl-mp -p 4567:4567 -e NO_TUNNEL=1 \
+    --restart unless-stopped webgl-mp-controller:latest
+```
+
+---
+
+### D. Run via Docker Compose on the target
+
+If you prefer Compose, copy just the `docker-compose.yml` (it references the
+image by tag, which you've already loaded) to the VM:
+
+```bash
+scp docker-compose.yml user@<VM_IP>:/opt/webgl-mp-controller/
+ssh user@<VM_IP> "cd /opt/webgl-mp-controller && docker compose up -d"
+```
+
+> Add `NO_TUNNEL: 1` to the compose `environment:` block to disable the tunnel.
+> Stop with `docker compose down`.
+
+---
+
+### E. Notes (same as in-container concerns in §4.4)
+
+- **Architecture match:** `docker save` images are architecture-specific. If your
+  PC is `amd64` and the VM is `arm64` (e.g. an Apple Silicon or Graviton VM),
+  build with the correct target platform, e.g.
+  `docker build --platform linux/amd64 -t webgl-mp-controller:latest .`, or build
+  directly on the target architecture.
+- **Tunnel vs. ingress:** set `NO_TUNNEL=1` when exposing via your own proxy/ingress.
+- **WebSockets:** enable `Upgrade` headers and disable buffering on `/socket.io`
+  if you front the container with a proxy.
+- **Health check:** `GET /api/config` returns JSON — use it as a liveness probe.
 
 ---
 
@@ -389,4 +554,6 @@ Games are data-driven via `src/games/registry.js`. To add one:
 - **For containerized deployment:** Docker (and optionally Docker Compose)
 
 > Looking to deploy? See **[Production / Shipping Deployment](#production--shipping-deployment)**
-> for distribution builds and running on a VM or in containers.
+> for distribution builds and running on a VM or in containers, or
+> **[Build Image on Your PC, Run on a Remote Docker / VM](#build-image-on-your-pc-run-on-a-remote-docker--vm)**
+> to build locally and ship the image.
