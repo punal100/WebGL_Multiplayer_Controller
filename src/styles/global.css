@@ -301,3 +301,76 @@ body {
 .controller__status.connected {
   color: var(--ok);
 }
+
+.controller__orient {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid #ffffff20;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ---- Horizontal / landscape layout ---- */
+/* When sideways (phone) or on a PC/tablet: game view on top (height-bounded
+   so it never eats the screen), then dpad (left) and actions (right) in a
+   row underneath. The view's height is capped so controls are always fully
+   visible and nothing is clipped. */
+.controller--horizontal {
+  flex-direction: column;
+}
+.controller--horizontal .controller__header {
+  position: relative;
+  flex: 0 0 auto;
+}
+.controller--horizontal .controller__view {
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: 100%;
+  max-height: 42%;
+  aspect-ratio: 16 / 9;
+}
+.controller--horizontal .controller__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 24px;
+}
+/* Size the button grids to the body height so they never overflow / clip on
+   short landscape screens. Buttons are square and fill their cells. */
+.controller--horizontal .dpad,
+.controller--horizontal .actions {
+  height: 100%;
+  max-height: 100%;
+}
+.controller--horizontal .dpad {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+}
+.controller--horizontal .actions {
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+}
+.controller--horizontal .btn {
+  aspect-ratio: 1;
+  width: 100%;
+  height: 100%;
+  font-size: clamp(14px, 3.5vh, 24px);
+}
+.controller--horizontal .controller__status {
+  flex: 0 0 auto;
+}
+
+/* ---- Vertical / portrait layout (default) ---- */
+.controller--vertical {
+  flex-direction: column;
+}
