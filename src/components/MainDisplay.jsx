@@ -3,6 +3,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { socket } from '../socket.js';
 import { KEY_MAP, dispatchSyntheticKey } from '../inputMap.js';
 import GameCanvas from './GameCanvas.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 const GAME_NAME = 'TickTackToe';
 
@@ -112,6 +113,7 @@ export default function MainDisplay() {
 
   return (
     <div className="display">
+      <BrandLogo className="brand-logo--corner" />
       <aside className="display__side">
         <h2>Player 1</h2>
         <div className="display__qr">

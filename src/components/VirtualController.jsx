@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { socket } from '../socket.js';
 import GameCanvas from './GameCanvas.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 const GAME_NAME = 'TickTackToe';
 
@@ -125,6 +126,7 @@ export default function VirtualController() {
       <div className={`controller__status ${connected ? 'connected' : ''}`}>
         {connected ? 'Connected to host' : 'Reconnecting…'}
       </div>
+      <BrandLogo className="brand-logo--bottom" />
     </div>
   );
 }

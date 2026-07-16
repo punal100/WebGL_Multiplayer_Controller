@@ -30,6 +30,38 @@ body {
   overflow: hidden;
 }
 
+/* ---- Brand Logo ---- */
+.brand-logo {
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Main page: top-left corner */
+.brand-logo--corner {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 20;
+  max-width: 220px;
+  max-height: 80px;
+}
+
+/* Controller page: bottom-center, never obstructing the player controls */
+.brand-logo--bottom {
+  position: fixed;
+  left: 50%;
+  bottom: 6px;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: 60vw;
+  max-height: 7vh;
+  height: auto;
+  opacity: 0.92;
+}
+
 /* ---- Main Display ---- */
 .display {
   display: grid;
