@@ -51,6 +51,12 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     }
 
     resize();
+    // Observe the canvas box (not just window resize) so the drawing buffer
+    // re-matches whenever the layout changes — including an orientation toggle
+    // that swaps the CSS class and alters the view's aspect ratio. Without
+    // this the stale buffer aspect would stretch/squish the rendered game.
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
     window.addEventListener('resize', resize);
 
     // Re-seed dimensions on resize for host so coordinates stay consistent
@@ -87,6 +93,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
         running = false;
         cancelAnimationFrame(raf);
         socket.off('game_state', onState);
+        ro.disconnect();
         window.removeEventListener('resize', resize);
         window.removeEventListener('resize', onResizeHost);
       };
@@ -161,6 +168,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     return () => {
       running = false;
       cancelAnimationFrame(raf);
+      ro.disconnect();
       window.removeEventListener('resize', resize);
       window.removeEventListener('resize', onResizeHost);
       window.removeEventListener('keydown', onDown);

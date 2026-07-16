@@ -378,11 +378,13 @@ body {
 }
 .controller--horizontal .controller__view {
   grid-area: view;
-  /* Height-driven 16:9 box: fill the center row's height, derive the width
-     from the aspect ratio, and clamp so it never overflows the column. */
-  height: 100%;
-  width: auto;
-  max-width: 100%;
+  /* Width-driven 16:9 box: fill the center column's width, derive the height
+     from the aspect ratio, and clamp so it never overflows the row. This
+     keeps a correct 16:9 shape even at extreme aspect ratios (never a thin
+     vertical sliver) and the ResizeObserver keeps the buffer in sync. */
+  width: 100%;
+  height: auto;
+  max-height: 100%;
   aspect-ratio: 16 / 9;
 }
 .controller--horizontal .dpad {
