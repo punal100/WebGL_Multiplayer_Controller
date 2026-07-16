@@ -243,10 +243,20 @@ image build does `npm run build` inside a multi-stage build for you.
 npm run docker:build     # docker build -t webgl-mp-controller:latest .
 npm run docker:run       # runs detached, maps host:container 4567
 
-docker logs -f webgl-mp  # follow logs
+docker logs -f webgl-mp  # follow logs (shows the public tunnel URL)
 ```
 
 Open `http://<DOCKER_HOST_IP>:4567/`.
+
+The image runs `server/launch.js`, so — just like `npm run start` — it starts
+the server **and** an auto Cloudflare Tunnel (`cloudflared` is baked into the
+image). The public `https://<random>.trycloudflare.com` URL is printed in the
+logs. To run the **plain server** instead (e.g. behind your own ingress/reverse
+proxy), set `NO_TUNNEL=1`:
+
+```bash
+docker run -d --name webgl-mp -p 4567:4567 -e NO_TUNNEL=1 webgl-mp-controller:latest
+```
 
 #### 4.2 Docker Compose — single command, out of the box
 
@@ -255,12 +265,15 @@ npm run docker:up        # docker compose up -d --build
 docker compose logs -f
 ```
 
-Stop it with `docker compose down`.
+Stop it with `docker compose down`. (Add `NO_TUNNEL=1` to the compose
+`environment:` block to disable the tunnel.)
 
 #### 4.3 Building the container *from the packed artifact* (optional)
 
 If you'd rather build an image on a machine that only has the shipped
-`.tar.gz` (no source tree), extract it and build a tiny runtime-only image:
+`.tar.gz` (no source tree), extract it and build a tiny runtime-only image.
+Install `cloudflared` in the image if you want the auto tunnel; otherwise it
+runs the plain server:
 
 ```bash
 mkdir app && tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz -C app
@@ -270,13 +283,18 @@ cat > Dockerfile <<'EOF'
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production PORT=4567
+# cloudflared for the auto Cloudflare Tunnel (omit for plain-server only)
+RUN apk add --no-cache wget ca-certificates \
+    && wget -q -O /usr/local/bin/cloudflared \
+       https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    && chmod +x /usr/local/bin/cloudflared
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY dist ./dist
 COPY server ./server
 COPY public ./public
 EXPOSE 4567
-CMD ["node", "server/index.js"]
+CMD ["node", "server/launch.js"]
 EOF
 
 docker build -t webgl-mp-controller:latest .
@@ -285,6 +303,9 @@ docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped webgl-mp-con
 
 #### 4.4 Notes for containers & orchestrators
 
+- **Tunnel vs. ingress:** The image starts a Cloudflare Tunnel by default. When
+  you expose the app through your own ingress/reverse proxy or a load balancer,
+  set `NO_TUNNEL=1` so you don't run a redundant public tunnel.
 - **WebSockets:** Socket.io requires WebSocket upgrade support. If you front the
   container with Nginx/Traefik/ingress, enable WebSocket/`Upgrade` headers and
   disable buffering on `/socket.io`.

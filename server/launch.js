@@ -6,6 +6,9 @@ import fs from 'node:fs';
 
 const PORT = process.env.PORT || 4567;
 
+// Tracks the cloudflared child so we can tear it down on shutdown.
+let tunnelProc = null;
+
 // --- Start the game server (server/index.js) ---
 const server = spawn(process.execPath, ['server/index.js'], {
   stdio: 'inherit',
@@ -47,6 +50,13 @@ function installCloudflared() {
 }
 
 async function startTunnel() {
+  // Allow running the plain server with no public tunnel (e.g. behind your own
+  // ingress/reverse proxy). Set NO_TUNNEL=1 to skip cloudflared entirely.
+  if (process.env.NO_TUNNEL === '1' || process.env.NO_TUNNEL === 'true') {
+    console.log('[tunnel] NO_TUNNEL set — skipping Cloudflare Tunnel.');
+    return;
+  }
+
   let exe = cloudflaredPath();
   if (!exe) {
     try {
@@ -63,6 +73,7 @@ async function startTunnel() {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
+  tunnelProc = tunnel;
 
   const printUrl = (line) => {
     const m = line.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
@@ -93,7 +104,11 @@ async function startTunnel() {
 server.on('exit', (code) => process.exit(code));
 startTunnel();
 
-process.on('SIGINT', () => {
+// Clean shutdown for both Ctrl+C (SIGINT) and `docker stop` (SIGTERM).
+function shutdown() {
+  if (tunnelProc) tunnelProc.kill();
   server.kill();
   process.exit(0);
-});
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
