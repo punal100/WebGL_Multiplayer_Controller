@@ -3,7 +3,8 @@
 // One command produces a single, self-contained artifact you can copy to any
 // host (VM, another PC, a container build context) and run with:
 //
-//   npm ci --omit=dev && npm run server
+//   npm ci --omit=dev && npm run serve   (server + Cloudflare Tunnel)
+//   npm ci --omit=dev && npm run server  (plain server, no tunnel)
 //
 // It builds the frontend (dist/) then bundles the ONLY files needed at runtime
 // into  release/webgl-multiplayer-controller-<version>.tar.gz :
@@ -67,4 +68,5 @@ console.log(`\n[pack] Done -> ${path.relative(root, archivePath)}`);
 console.log('[pack] Ship it, then on the target host:');
 console.log(`  tar -xzf ${archiveName}`);
 console.log('  npm ci --omit=dev');
-console.log('  npm run server        # or: npm run start (with Cloudflare Tunnel)\n');
+console.log('  npm run serve         # server + Cloudflare Tunnel (public URL)');
+console.log('  npm run server        # or: plain server, no tunnel\n');

@@ -80,8 +80,9 @@ Controller 2:  http://192.168.1.8:4567/Game/TankDuel/2
 |-------------------|----------------------------------------------------------|
 | `npm run dev`     | Vite dev server with proxy to the backend (hot reload). |
 | `npm run build`   | Build the React app into `dist/`.                        |
-| `npm run server`  | Run the Express + Socket.io server.                      |
-| `npm run start`   | `build` then `server` — one command to go live.          |
+| `npm run server`  | Run the Express + Socket.io server (no tunnel).          |
+| `npm run serve`   | Run the server **+** auto Cloudflare Tunnel (no rebuild — for a packed/distribution build). |
+| `npm run start`   | `build` then server + tunnel — one command to go live locally. |
 | `npm run pack`    | Build + bundle a single shippable `.tar.gz` in `release/`. |
 | `npm run docker:build` | Build the production Docker image.                  |
 | `npm run docker:run`   | Run the built image (maps port 4567).              |
@@ -184,13 +185,16 @@ sudo ufw allow 4567/tcp  # open the firewall port
 # Go live:
 NODE_ENV=production npm run server      # plain server (no tunnel)
 # or, to also auto-start a public Cloudflare Tunnel:
-NODE_ENV=production npm run start
+NODE_ENV=production npm run serve
 ```
 
 Then reach the host at `http://<VM_IP>:4567/`.
 
-> `npm run server` = plain server. `npm run start` = server **+** auto Cloudflare
-> Tunnel. The bundled tunnel auto-installer downloads the Windows binary; on
+> `npm run server` = plain server. `npm run serve` = server **+** auto Cloudflare
+> Tunnel (no rebuild — safe for a distribution build). Do **not** use `npm run
+> start` on a packed build: it re-runs `npm run build`, which needs the source
+> tree and dev tooling that a distribution build intentionally omits.
+> The bundled tunnel auto-installer downloads the Windows binary; on
 > Linux install `cloudflared` from your package manager first so it's on `PATH`.
 
 #### 3.5 Keep it running across reboots (systemd)
@@ -302,7 +306,7 @@ docker run -d --name webgl-mp -p 4567:4567 --restart unless-stopped webgl-mp-con
 WebGL_Multiplayer_Controller/
 ├── server/
 │   ├── index.js       # Express + Socket.io relay server (port 4567)
-│   ├── launch.js      # start + auto Cloudflare Tunnel (npm run start)
+│   ├── launch.js      # server + auto Cloudflare Tunnel (npm run serve / start)
 │   └── lanIp.js       # Detects the machine's LAN IPv4 address
 ├── scripts/
 │   └── pack.js        # Build + bundle one shippable .tar.gz (npm run pack)
