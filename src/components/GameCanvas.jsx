@@ -2,9 +2,13 @@ import { useEffect, useRef } from 'react';
 import { createInitialState, serialize, step } from '../game/engine.js';
 import { renderState } from '../game/render.js';
 
-// Host mode: simulates the authoritative game, draws it, and broadcasts
-// state snapshots (~30Hz) so controllers stay in sync.
-// Client mode: receives snapshots and only renders them (no simulation).
+// Host mode: the SINGLE authoritative simulator. Steps the game, draws it,
+// and broadcasts state snapshots (~30Hz) so controllers (and any extra
+// viewer main windows) stay in sync.
+// Viewer mode: an extra main window. It must NOT simulate or broadcast,
+// otherwise two independent sets of character data would fight and the
+// connected controllers would flicker. It only renders the server state.
+// Client mode: a phone controller. Receives snapshots and only renders them.
 export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTackToe', windowRef }) {
   const canvasRef = useRef(null);
 
@@ -28,9 +32,10 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     };
     window.addEventListener('resize', onResizeHost);
 
-    if (mode === 'client' && socket) {
-      // Client never simulates and must NEVER show its own initial spawn.
-      // Start with no state; only draw once a real host snapshot arrives.
+    if (mode === 'client' || mode === 'viewer') {
+      // Neither client nor an extra viewer window ever simulates. They start
+      // with no state and only draw once a real host snapshot arrives (no
+      // initial-spawn flicker, no duplicate source of truth).
       state = null;
       const onState = (snap) => {
         state = snap;
@@ -39,7 +44,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       socket.on('game_state', onState);
 
       // Repaint the latest snapshot every frame. A blank canvas is drawn
-      // until the first snapshot lands (no initial-spawn flicker).
+      // until the first snapshot lands.
       let running = true;
       const raf = requestAnimationFrame(function draw() {
         if (!running) return;
@@ -57,7 +62,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       };
     }
 
-    // Host mode
+    // Host mode (authoritative simulator)
     const keys = new Set();
     const onDown = (e) => keys.add(e.key.toLowerCase());
     const onUp = (e) => keys.delete(e.key.toLowerCase());
@@ -65,12 +70,23 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     window.addEventListener('keyup', onUp);
     if (windowRef) windowRef.current = window;
 
+    // Remote keyboard input relayed from other (viewer) main windows. Apply
+    // it to the same keys set so input works in ANY main window while the
+    // single simulation stays the only source of truth.
+    const onRemoteKey = ({ key, state: kState }) => {
+      if (!key) return;
+      if (kState === 'down') keys.add(key.toLowerCase());
+      else keys.delete(key.toLowerCase());
+    };
+    socket && socket.on('host_key', onRemoteKey);
+
     // Resume from server-persisted state (so a main-page reload keeps the
     // current positions/rotations/score instead of resetting). We hold off
     // broadcasting until this arrives (or a short fallback) so controllers
     // never see a single frame of the local initial spawn.
     let resumed = false;
     const onResume = (snap) => {
+      keys.clear();
       state = snap;
       resumed = true;
     };
@@ -78,6 +94,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
 
     // Reset button: reseed the authoritative state.
     const onReset = () => {
+      keys.clear();
       state = createInitialState(canvas.width, canvas.height);
       resumed = true;
     };
@@ -120,6 +137,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       window.removeEventListener('keyup', onUp);
       socket && socket.off('resume_state', onResume);
       socket && socket.off('game_reset', onReset);
+      socket && socket.off('host_key', onRemoteKey);
       if (windowRef) windowRef.current = null;
     };
   }, [mode, socket, gameName, windowRef]);

@@ -12,6 +12,8 @@ export default function MainDisplay() {
   const [origin, setOrigin] = useState('');
   const [status, setStatus] = useState({ 1: false, 2: false });
   const [showSettings, setShowSettings] = useState(false);
+  const [isViewer, setIsViewer] = useState(false);
+  const viewerRef = useRef(false);
   const gameWindowRef = useRef(null);
   const pressedByController = useRef({ 1: new Set(), 2: new Set() });
 
@@ -27,7 +29,16 @@ export default function MainDisplay() {
 
     socket.emit('join_game', { gameName: GAME_NAME, role: 'host' });
 
+    // The server tells us whether THIS main window is the single authoritative
+    // simulator. Any extra main window becomes a viewer: it must not process
+    // controller input (only the authoritative host drives the game).
+    const onHostRole = ({ authoritative }) => {
+      setIsViewer(!authoritative);
+      viewerRef.current = !authoritative;
+    };
+
     const onInput = (payload) => {
+      if (viewerRef.current) return;
       const { controllerId, button, state } = payload;
       const id = String(controllerId);
       const map = KEY_MAP[id];
@@ -49,6 +60,10 @@ export default function MainDisplay() {
     };
 
     const onDisconnect = ({ controllerId }) => {
+      if (viewerRef.current) {
+        setStatus((s) => ({ ...s, [String(controllerId)]: false }));
+        return;
+      }
       const id = String(controllerId);
       const map = KEY_MAP[id];
       const pressed = pressedByController.current[id];
@@ -63,11 +78,27 @@ export default function MainDisplay() {
     socket.on('controller_input', onInput);
     socket.on('controller_status', onStatus);
     socket.on('controller_disconnected', onDisconnect);
+    socket.on('host_role', onHostRole);
+
+    // Any main window's own keyboard should drive the game, even a viewer
+    // window. The authoritative host applies keys locally; viewer windows
+    // relay their key presses to the authoritative host via the server.
+    const onKeyDown = (e) => {
+      if (viewerRef.current) socket.emit('host_key', { gameName: GAME_NAME, key: e.key, state: 'down' });
+    };
+    const onKeyUp = (e) => {
+      if (viewerRef.current) socket.emit('host_key', { gameName: GAME_NAME, key: e.key, state: 'up' });
+    };
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
 
     return () => {
       socket.off('controller_input', onInput);
       socket.off('controller_status', onStatus);
       socket.off('controller_disconnected', onDisconnect);
+      socket.off('host_role', onHostRole);
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
     };
   }, []);
 
@@ -107,7 +138,12 @@ export default function MainDisplay() {
         </div>
         <div className="display__title">{GAME_NAME} — 2 Player</div>
         <div className="display__game">
-          <GameCanvas mode="host" socket={socket} gameName={GAME_NAME} windowRef={gameWindowRef} />
+          <GameCanvas
+            mode={isViewer ? 'viewer' : 'host'}
+            socket={socket}
+            gameName={GAME_NAME}
+            windowRef={isViewer ? undefined : gameWindowRef}
+          />
         </div>
       </main>
 

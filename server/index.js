@@ -58,6 +58,14 @@ const roomControllers = new Map(); // room -> Map(controllerId -> socketId)
 // broadcast; sent back to a host that (re)joins.
 const roomState = new Map(); // room -> serialized state snapshot
 
+// There must be EXACTLY ONE simulator of the authoritative state per room.
+// Multiple main windows are allowed, but only the first (authoritative) host
+// simulates and broadcasts. Extra main windows join as "viewer" windows that
+// merely render the authoritative state. Without this, two independently
+// simulating hosts would broadcast two different sets of character data and
+// connected controllers would flicker between the two.
+const roomHost = new Map(); // room -> socketId of the authoritative host
+
 io.on('connection', (socket) => {
   socket.on('join_game', ({ gameName, role, controllerId }) => {
     const room = gameName || 'TickTackToe';
@@ -74,6 +82,13 @@ io.on('connection', (socket) => {
         connected: true,
       });
     } else if (role === 'host') {
+      // Exactly one authoritative host per room simulates and broadcasts the
+      // single source-of-truth state. The first host to join owns it; any
+      // additional main windows become viewers that just render.
+      const isAuthoritative = !roomHost.has(room);
+      if (isAuthoritative) roomHost.set(room, socket.id);
+      socket.data.authoritative = isAuthoritative;
+
       // Tell host which controllers are already connected
       const existing = roomControllers.get(room);
       if (existing) {
@@ -85,6 +100,9 @@ io.on('connection', (socket) => {
       // positions/rotations/score.
       const saved = roomState.get(room);
       if (saved) socket.emit('resume_state', saved);
+
+      // Inform this window whether it should simulate or merely view.
+      socket.emit('host_role', { authoritative: isAuthoritative });
     }
   });
 
@@ -94,29 +112,52 @@ io.on('connection', (socket) => {
     socket.to(room).emit('controller_input', payload);
   });
 
-  // Host broadcasts authoritative game state; store it and forward to
-  // everyone else in the room (the controllers) so all screens stay in sync.
-  socket.on('game_state', (payload) => {
+  // A non-authoritative (viewer) main window relays its own local keyboard
+  // presses to the single authoritative host so input works in ANY main
+  // window while still keeping one source of truth.
+  socket.on('host_key', (payload) => {
     const room = socket.data.room || payload?.gameName || 'TickTackToe';
-    roomState.set(room, payload.state); // persist across host reloads
-    socket.to(room).emit('game_state', payload.state);
+    const hostId = roomHost.get(room);
+    if (hostId && hostId !== socket.id) {
+      io.to(hostId).emit('host_key', payload);
+    }
   });
 
-  // Host (or any client) requests a full reset of the room state.
+  // Host broadcasts authoritative game state; store it and forward to
+  // everyone else in the room (the controllers) so all screens stay in sync.
+  // Only the authoritative host's state is accepted — a viewer window must
+  // never overwrite the single source of truth with its own inert copy.
+  socket.on('game_state', (payload) => {
+    const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    if (socket.data.authoritative && roomHost.get(room) === socket.id) {
+      roomState.set(room, payload.state); // persist across host reloads
+      socket.to(room).emit('game_state', payload.state);
+    }
+  });
+
+  // Host (or any client) requests a full reset of the room state. Only the
+  // authoritative host may reset the single source of truth.
   socket.on('reset_game', (payload) => {
     const room = socket.data.room || payload?.gameName || 'TickTackToe';
+    if (!socket.data.authoritative || roomHost.get(room) !== socket.id) return;
     roomState.delete(room);
     io.to(room).emit('game_reset', { gameName: room });
   });
 
   socket.on('disconnect', () => {
-    const { room, role, controllerId } = socket.data;
+    const { room, role, controllerId, authoritative } = socket.data;
     if (role === 'controller' && room) {
       const m = roomControllers.get(room);
       if (m) {
         m.delete(String(controllerId));
         // Tell host to release all keys for this controller
         socket.to(room).emit('controller_disconnected', { controllerId });
+      }
+    } else if (role === 'host' && room) {
+      // If the authoritative host left, release the slot so a surviving
+      // viewer window can take over as the single simulator.
+      if (authoritative && roomHost.get(room) === socket.id) {
+        roomHost.delete(room);
       }
     }
   });
