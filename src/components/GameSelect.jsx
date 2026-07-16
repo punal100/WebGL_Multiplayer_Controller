@@ -13,7 +13,7 @@ export default function GameSelect() {
           {GAMES.map((game) => (
             <Link
               key={game.name}
-              to={`/${game.name}`}
+              to={`/Game/${game.name}`}
               className="select__card"
             >
               <div className="select__card-name">{game.title}</div>

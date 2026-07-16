@@ -11,8 +11,8 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<GameSelect />} />
-        <Route path="/:gameName" element={<MainDisplay />} />
-        <Route path="/:gameName/:controllerId" element={<VirtualController />} />
+        <Route path="/Game/:gameName" element={<MainDisplay />} />
+        <Route path="/Game/:gameName/:controllerId" element={<VirtualController />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>
