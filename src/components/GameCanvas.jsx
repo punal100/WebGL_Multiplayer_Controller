@@ -150,6 +150,16 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
     };
     socket && socket.on('game_reset', onReset);
 
+    // A late-joining controller/viewer asks for the current state so it can
+    // render immediately (turn-based games don't stream state continuously).
+    const onRequestState = () => {
+      if (!state) return;
+      const snap =
+        inputModel === 'actions' ? gameDef.engine.serialize(state) : serialize(state);
+      if (socket) socket.emit('game_state', { gameName, state: snap });
+    };
+    socket && socket.on('request_state', onRequestState);
+
     if (inputModel === 'actions') {
       // Discrete-action games: apply player actions to the authoritative state
       // and broadcast. No continuous simulation loop is needed.
@@ -199,6 +209,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         window.removeEventListener('resize', onResizeHost);
         socket && socket.off('resume_state', onResume);
         socket && socket.off('game_reset', onReset);
+        socket && socket.off('request_state', onRequestState);
         if (windowRef) windowRef.current = null;
       };
     }
@@ -260,6 +271,7 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       socket && socket.off('resume_state', onResume);
       socket && socket.off('game_reset', onReset);
       socket && socket.off('host_key', onRemoteKey);
+      socket && socket.off('request_state', onRequestState);
       if (windowRef) windowRef.current = null;
     };
   }, [mode, socket, gameName, windowRef, inputModel, gameDef]);

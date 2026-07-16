@@ -144,6 +144,18 @@ io.on('connection', (socket) => {
     socket.to(room).emit('controller_input', payload);
   });
 
+  // A controller (or viewer) asks the authoritative host for the current state
+  // so late joiners render the board immediately instead of waiting for the
+  // next action (important for turn-based games that don't stream state).
+  socket.on('request_state', () => {
+    const room = socket.data.room;
+    if (!room) return;
+    const hostId = roomHost.get(room);
+    if (hostId && hostId !== socket.id) {
+      io.to(hostId).emit('request_state', { from: socket.id });
+    }
+  });
+
   // A non-authoritative (viewer) main window relays its own local keyboard
   // presses to the single authoritative host so input works in ANY main
   // window while still keeping one source of truth.

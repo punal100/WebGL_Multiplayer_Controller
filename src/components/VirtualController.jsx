@@ -63,6 +63,14 @@ export default function VirtualController() {
       controllerId: id,
     });
 
+    // Ask the host for the current state so the board renders immediately
+    // (turn-based games like TicTacToe don't stream state continuously).
+    const requestState = () => socket.emit('request_state');
+    socket.on('connect', requestState);
+    if (socket.connected) requestState();
+    // Also re-request shortly after joining in case the host wasn't ready.
+    const t = setTimeout(requestState, 400);
+
     const onConnect = () => setConnected(true);
     const onDisconnect = () => setConnected(false);
     socket.on('connect', onConnect);
@@ -76,7 +84,9 @@ export default function VirtualController() {
 
     return () => {
       socket.off('connect', onConnect);
+      socket.off('connect', requestState);
       socket.off('disconnect', onDisconnect);
+      clearTimeout(t);
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       // Leave the room so this controller socket never lingers in a stale
