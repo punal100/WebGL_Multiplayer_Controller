@@ -11,7 +11,7 @@ Built with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io).
 ```
 ┌──────────────┐     QR scan      ┌──────────────────────┐
 │  Phone P1    │ ───────────────▶ │  http://LAN:4567/    │
-│  (controller)│    touch events  │   TickTackToe/1      │
+│  (controller)│    touch events  │   Game/TickTackToe/1 │
 └──────────────┘ ─── Socket.io ──▶┌──────────────────────┐
                                     │  Host PC (browser)  │
 ┌──────────────┐ ─── Socket.io ──▶│  - Game canvas      │
@@ -23,7 +23,7 @@ Built with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io).
 
 1. The PC runs an Express + Socket.io server on port **4567** and serves the React app.
 2. The host screen shows two **QR codes** (left = Player 1, right = Player 2).
-3. Players scan the QR to open a virtual controller page at `/TickTackToe/<id>`.
+3. Players scan the QR to open a virtual controller page at `/Game/TickTackToe/<id>`.
 4. Touching buttons emits Socket.io events that the host turns into **synthetic `KeyboardEvent`s**, so the game plays as if keys were pressed on the PC — no game code changes needed.
 
 ---
@@ -52,17 +52,18 @@ npm run start
 
 `npm run start` builds the React frontend and launches the server. Then open:
 
-- **Host (PC):** `http://localhost:4567` or `http://<LAN_IP>:4567`
+- **Host (PC):** `http://localhost:4567/` (landing page) → pick a game, or open directly `http://localhost:4567/Game/TickTackToe`
 - **Controllers (phones):** scan the on-screen QR codes, or visit:
-  - Player 1: `http://<LAN_IP>:4567/TickTackToe/1`
-  - Player 2: `http://<LAN_IP>:4567/TickTackToe/2`
+  - Player 1: `http://<LAN_IP>:4567/Game/TickTackToe/1`
+  - Player 2: `http://<LAN_IP>:4567/Game/TickTackToe/2`
 
 The server prints the LAN IP on startup, e.g.:
 
 ```
 LAN access:    http://192.168.1.8:4567
-Controller 1:  http://192.168.1.8:4567/TickTackToe/1
-Controller 2:  http://192.168.1.8:4567/TickTackToe/2
+Host game:     http://192.168.1.8:4567/Game/TickTackToe
+Controller 1:  http://192.168.1.8:4567/Game/TickTackToe/1
+Controller 2:  http://192.168.1.8:4567/Game/TickTackToe/2
 ```
 
 > **Note:** Phones must be on the **same Wi-Fi/network** as the host PC to reach the LAN IP.
@@ -88,10 +89,12 @@ WebGL_Multiplayer_Controller/
 │   ├── index.js       # Express + Socket.io relay server (port 4567)
 │   └── lanIp.js       # Detects the machine's LAN IPv4 address
 ├── src/
-│   ├── main.jsx       # React entry + router
+│   ├── main.jsx       # React entry + router (landing, /Game/:name, /Game/:name/:id)
+│   ├── games.js       # Registry of available games
 │   ├── socket.js      # Shared Socket.io client
 │   ├── inputMap.js    # Key mapping + synthetic KeyboardEvent dispatch
 │   ├── components/
+│   │   ├── GameSelect.jsx     # Landing page: pick a game
 │   │   ├── MainDisplay.jsx     # Host screen: QR codes, game, status
 │   │   ├── VirtualController.jsx # Mobile controller page
 │   │   └── GameCanvas.jsx      # Embedded 2-player WebGL/Canvas game

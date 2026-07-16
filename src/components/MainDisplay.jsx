@@ -111,8 +111,8 @@ export default function MainDisplay() {
   };
 
   const base = origin || `http://${lanIp}:${port}`;
-  const c1Url = `${base}/${GAME_NAME}/1`;
-  const c2Url = `${base}/${GAME_NAME}/2`;
+  const c1Url = `${base}/Game/${GAME_NAME}/1`;
+  const c2Url = `${base}/Game/${GAME_NAME}/2`;
 
   return (
     <div className="display">
