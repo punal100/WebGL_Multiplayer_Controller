@@ -29,17 +29,21 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     window.addEventListener('resize', onResizeHost);
 
     if (mode === 'client' && socket) {
+      // Client never simulates and must NEVER show its own initial spawn.
+      // Start with no state; only draw once a real host snapshot arrives.
+      state = null;
       const onState = (snap) => {
         state = snap;
         window.__clientState = snap;
       };
       socket.on('game_state', onState);
 
-      // Client has no simulation; just repaint the latest snapshot every
-      // frame so the canvas always reflects the authoritative host state.
+      // Repaint the latest snapshot every frame. A blank canvas is drawn
+      // until the first snapshot lands (no initial-spawn flicker).
       let running = true;
       const raf = requestAnimationFrame(function draw() {
         if (!running) return;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         if (state) renderState(ctx, canvas, state);
         requestAnimationFrame(draw);
       });
