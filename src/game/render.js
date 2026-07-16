@@ -252,10 +252,14 @@ function drawHUD(ctx, w, h, state) {
     // whichever shape this state uses so the HUD is correct on BOTH the host
     // main window and the remote controllers.
     const ab = p.abilities || {};
+    // `max` is each ability's full cooldown (ABILITY.* in engine.js) so the
+    // fill bar scales correctly per ability. The previous code used a fixed
+    // `c.v > 5 ? 8 : 3` divisor that didn't match the real durations, which
+    // made Mine (8s) appear to reset and refill halfway through its cooldown.
     const cds = [
-      { label: 'DASH', v: p.dash ?? ab.DashCooldown ?? 0 },
-      { label: 'MINE', v: p.mine ?? ab.MineCooldown ?? 0 },
-      { label: 'RICO', v: p.special ?? ab.SpecialFireCooldown ?? 0 },
+      { label: 'DASH', v: p.dash ?? ab.DashCooldown ?? 0, max: 3 },
+      { label: 'MINE', v: p.mine ?? ab.MineCooldown ?? 0, max: 8 },
+      { label: 'RICO', v: p.special ?? ab.SpecialFireCooldown ?? 0, max: 5 },
     ];
     let cy = pad + fScore + 6;
     const pillW = Math.max(64, w * 0.09);
@@ -270,7 +274,7 @@ function drawHUD(ctx, w, h, state) {
       roundRect(ctx, px, cy, pillW, pillH, 6); ctx.stroke();
       // fill bar
       const ready = c.v <= 0;
-      const frac = ready ? 1 : 1 - Math.min(1, c.v / (c.v > 5 ? 8 : 3));
+      const frac = ready ? 1 : 1 - Math.min(1, c.v / (c.max || 1));
       ctx.fillStyle = ready ? '#3ddc84' : '#ffb703';
       roundRect(ctx, px + 3, cy + 3, (pillW - 6) * frac, pillH - 6, 4); ctx.fill();
       ctx.fillStyle = ready ? '#06240f' : '#2a1c00';
