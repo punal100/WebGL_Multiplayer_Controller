@@ -7,9 +7,12 @@ export function renderState(ctx, canvas, state) {
   const w = canvas.width;
   const h = canvas.height;
   const size = Math.min(w, h);
-  const board = size * 0.86;
+  // Keep the board large but leave a small, safe inset for the banner (top)
+  // and scores (bottom) so text never bleeds past the canvas edges.
+  const padY = Math.max(size * 0.06, 18); // total vertical padding top+bottom
+  const board = size - padY * 2;
   const ox = (w - board) / 2;
-  const oy = (h - board) / 2;
+  const oy = padY;
   const cell = board / 3;
 
   ctx.fillStyle = '#0b0e14';
@@ -59,25 +62,27 @@ export function renderState(ctx, canvas, state) {
     }
   }
 
-  // Status banner
-  const font = Math.max(14, w * 0.026);
+  // Status banner (top inset, vertically centered)
+  const font = Math.max(13, size * 0.05);
   ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
   ctx.fillStyle = '#e6edf3';
   ctx.font = `${font}px system-ui`;
   let msg;
   if (state.winner === 'draw') msg = "Draw — press Restart";
   else if (state.winner) msg = `${state.winner} wins! — press Restart`;
   else msg = `Turn: ${state.turn}`;
-  ctx.fillText(msg, w / 2, oy - Math.max(10, board * 0.05));
+  ctx.fillText(msg, w / 2, padY / 2);
 
-  // Scores
-  ctx.font = `${Math.max(12, w * 0.02)}px system-ui`;
+  // Scores (bottom inset, aligned under each side)
+  const scoreFont = Math.max(12, size * 0.045);
+  ctx.font = `${scoreFont}px system-ui`;
   ctx.textAlign = 'left';
   ctx.fillStyle = MARK.X;
-  ctx.fillText(`X ${state.scores.X}`, ox, oy + board + font * 1.6);
+  ctx.fillText(`X ${state.scores.X}`, ox, h - padY / 2);
   ctx.textAlign = 'right';
   ctx.fillStyle = MARK.O;
-  ctx.fillText(`O ${state.scores.O}`, ox + board, oy + board + font * 1.6);
+  ctx.fillText(`O ${state.scores.O}`, ox + board, h - padY / 2);
 }
 
 function checkLine(state) {
