@@ -28,7 +28,7 @@ The system relies on a monolithic local development environment acting as the ho
 
 - Implement an Express server on port <mark>`4567` .</mark> Include a utility to find and log the machine's local LAN IP (e.g., <mark>`192.168.x.x` )</mark> .
 
-- Integrate <mark>`socket.io` .</mark> Create rooms for specific games (e.g., room <mark>`TickTackToe` )</mark> .
+- Integrate <mark>`socket.io` .</mark> Create rooms for specific games (e.g., room <mark>`TankDuel` )</mark> .
 
 -
 
@@ -52,9 +52,9 @@ The system relies on a monolithic local development environment acting as the ho
 
 -
 
-- Use the <mark>`qrcode.react`</mark> package to generate two QR codes. Left QR points to <mark>`http:// [LOCAL_IP]:4567/TickTackToe/1` .</mark> Right QR points to <mark>`http://[LOCAL_IP]:4567/ TickTackToe/2` .</mark>
+- Use the <mark>`qrcode.react`</mark> package to generate two QR codes. Left QR points to <mark>`http:// [LOCAL_IP]:4567/Game/TankDuel/1` .</mark> Right QR points to <mark>`http://[LOCAL_IP]:4567/ Game/TankDuel/2` .</mark>
 
-- Connect to Socket.io on mount. Register as the "host" for game <mark>`TickTackToe`</mark> .
+- Connect to Socket.io on mount. Register as the "host" for game <mark>`TankDuel`</mark> .
 
 -
 

@@ -9,7 +9,7 @@ import { renderState } from '../game/render.js';
 // otherwise two independent sets of character data would fight and the
 // connected controllers would flicker. It only renders the server state.
 // Client mode: a phone controller. Receives snapshots and only renders them.
-export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTackToe', windowRef }) {
+export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel', windowRef }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {

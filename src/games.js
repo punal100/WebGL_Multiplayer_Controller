@@ -3,9 +3,9 @@
 // controller, server URLs) in sync via the single GAME_NAMES list.
 export const GAMES = [
   {
-    name: 'TickTackToe',
-    title: 'Tick Tack Toe',
-    tagline: 'Top-down 2-player shooter',
+    name: 'TankDuel',
+    title: 'Tank Duel',
+    tagline: 'Top-down 2-player tank shooter',
     players: 2,
   },
 ];

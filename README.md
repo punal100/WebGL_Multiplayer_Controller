@@ -11,7 +11,7 @@ Built with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io).
 ```
 ┌──────────────┐     QR scan      ┌──────────────────────┐
 │  Phone P1    │ ───────────────▶ │  http://LAN:4567/    │
-│  (controller)│    touch events  │   Game/TickTackToe/1 │
+│  (controller)│    touch events  │   Game/TankDuel/1   │
 └──────────────┘ ─── Socket.io ──▶┌──────────────────────┐
                                     │  Host PC (browser)  │
 ┌──────────────┐ ─── Socket.io ──▶│  - Game canvas      │
@@ -23,7 +23,7 @@ Built with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io).
 
 1. The PC runs an Express + Socket.io server on port **4567** and serves the React app.
 2. The host screen shows two **QR codes** (left = Player 1, right = Player 2).
-3. Players scan the QR to open a virtual controller page at `/Game/TickTackToe/<id>`.
+3. Players scan the QR to open a virtual controller page at `/Game/TankDuel/<id>`.
 4. Touching buttons emits Socket.io events that the host turns into **synthetic `KeyboardEvent`s**, so the game plays as if keys were pressed on the PC — no game code changes needed.
 
 ---
@@ -52,18 +52,18 @@ npm run start
 
 `npm run start` builds the React frontend and launches the server. Then open:
 
-- **Host (PC):** `http://localhost:4567/` (landing page) → pick a game, or open directly `http://localhost:4567/Game/TickTackToe`
+- **Host (PC):** `http://localhost:4567/` (landing page) → pick a game, or open directly `http://localhost:4567/Game/TankDuel`
 - **Controllers (phones):** scan the on-screen QR codes, or visit:
-  - Player 1: `http://<LAN_IP>:4567/Game/TickTackToe/1`
-  - Player 2: `http://<LAN_IP>:4567/Game/TickTackToe/2`
+  - Player 1: `http://<LAN_IP>:4567/Game/TankDuel/1`
+  - Player 2: `http://<LAN_IP>:4567/Game/TankDuel/2`
 
 The server prints the LAN IP on startup, e.g.:
 
 ```
 LAN access:    http://192.168.1.8:4567
-Host game:     http://192.168.1.8:4567/Game/TickTackToe
-Controller 1:  http://192.168.1.8:4567/Game/TickTackToe/1
-Controller 2:  http://192.168.1.8:4567/Game/TickTackToe/2
+Host game:     http://192.168.1.8:4567/Game/TankDuel
+Controller 1:  http://192.168.1.8:4567/Game/TankDuel/1
+Controller 2:  http://192.168.1.8:4567/Game/TankDuel/2
 ```
 
 > **Note:** Phones must be on the **same Wi-Fi/network** as the host PC to reach the LAN IP.

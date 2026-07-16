@@ -6,7 +6,7 @@ import { KEY_MAP, dispatchSyntheticKey } from '../inputMap.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
 
-const DEFAULT_GAME = 'TickTackToe';
+const DEFAULT_GAME = 'TankDuel';
 
 export default function MainDisplay() {
   const { gameName = DEFAULT_GAME } = useParams();

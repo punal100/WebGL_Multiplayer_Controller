@@ -4,7 +4,7 @@ import { socket } from '../socket.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
 
-const GAME_NAME = 'TickTackToe';
+const GAME_NAME = 'TankDuel';
 
 const DPAD = [
   { id: 'up', label: '▲', cls: 'up' },

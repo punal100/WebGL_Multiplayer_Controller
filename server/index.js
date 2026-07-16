@@ -17,9 +17,9 @@ console.log(`\n=== WebGL Multiplayer Controller ===`);
 console.log(`Local access:  http://localhost:${PORT}`);
 console.log(`LAN access:    http://${lanIp}:${PORT}`);
 console.log(`Pick a game:   http://${lanIp}:${PORT}/`);
-console.log(`Host TickTackToe: http://${lanIp}:${PORT}/Game/TickTackToe`);
-console.log(`Controller 1:  http://${lanIp}:${PORT}/Game/TickTackToe/1`);
-console.log(`Controller 2:  http://${lanIp}:${PORT}/Game/TickTackToe/2\n`);
+console.log(`Host TankDuel:   http://${lanIp}:${PORT}/Game/TankDuel`);
+console.log(`Controller 1:  http://${lanIp}:${PORT}/Game/TankDuel/1`);
+console.log(`Controller 2:  http://${lanIp}:${PORT}/Game/TankDuel/2\n`);
 
 // Expose LAN info to the frontend
 app.get('/api/config', (req, res) => {
@@ -85,7 +85,7 @@ function releaseHostSlot(room, socket) {
 
 io.on('connection', (socket) => {
   socket.on('join_game', ({ gameName, role, controllerId }) => {
-    const room = gameName || 'TickTackToe';
+    const room = gameName || 'TankDuel';
 
     // Switching rooms (e.g. navigating between games in the same browser
     // tab, which shares one socket): fully leave the previous room first so
