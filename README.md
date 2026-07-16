@@ -385,8 +385,8 @@ Upload that one file to the instance (SCP, the JupyterLab upload UI, an SFTP
 client, or a cloud bucket). Then **on the instance** (SSH or JupyterLab
 terminal):
 
-**Prerequisite — install Node.js 20 LTS** (the instance does not ship `node`/
-`npm`):
+**Prerequisite — install Node.js 20 LTS** (the instance does not ship
+`node` / `npm`):
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -397,36 +397,66 @@ node -v && npm -v
 If `sudo` is unavailable or the instance is not Debian/Ubuntu, check
 `cat /etc/os-release` and install Node 18+ for that distro.
 
-**Run the app:**
+**Run the app** (use the **absolute path** — on this instance `~` resolves
+to `/home/jovyan`, which is empty; the files live under `/root`):
 
 ```bash
-mkdir -p ~/webgl-mp && tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz -C ~/webgl-mp
-cd ~/webgl-mp
+mkdir -p /root/webgl-mp && tar -xzf webgl-multiplayer-controller-1.0.0.tar.gz -C /root/webgl-mp
+cd /root/webgl-mp
 npm ci --omit=dev                 # install production deps only
 NODE_ENV=production npm run serve # server + Cloudflare Tunnel (public URL)
 # or, behind your own ingress/reverse proxy:
 NODE_ENV=production NO_TUNNEL=1 npm run server
 ```
 
-Then open `http://<INSTANCE_IP>:4567/`. Expose port `4567` in the instance
-firewall. `npm run serve` prints the public `https://…trycloudflare.com` URL;
-`npm run server` runs the plain server. Use `nohup … &` or a `tmux`
-session to keep it running after you disconnect.
+**Keep it running after you close SSH.** A plain foreground `npm run server`
+dies when the SSH session ends. Start it detached and disowned (one line,
+with the `cd` inside the same command so the working directory is correct):
 
-**Cloudflare Tunnel on the instance.** `npm run serve` needs `cloudflared` on
-`PATH`. The server tries to auto-install it (Linux: `cloudflared-linux-amd64`;
-Windows: `cloudflared-windows-amd64.exe`) if missing. If auto-install is blocked
-(e.g. no outbound GitHub access), install it yourself before starting:
+```bash
+cd /root/webgl-mp && nohup env NODE_ENV=production NO_TUNNEL=1 npm run server > /root/server.log 2>&1 & disown
+```
+
+Then disconnect SSH, reconnect, and verify it survived:
+
+```bash
+curl -s http://localhost:4567/ | head -c 200
+ps aux | grep index.js | grep -v grep
+```
+
+> `tmux` / `setsid` were not available on this instance, and `~/webgl-mp`
+> failed because `~` expanded to the empty `/home/jovyan`. The
+> `cd /root/webgl-mp && nohup … & disown` form above is what
+> actually works. If `disown` is unavailable, `nohup … &` alone usually
+> survives logout too.
+
+**Reaching the app.** Open `http://<INSTANCE_IP>:4567/`. Expose /
+allow inbound **TCP port `4567`** in the instance's security group / firewall
+(SSH on 22 works because it is already allowed; 4567 is not by default).
+The server prints QR codes pointing at the instance's detected LAN IP; when you
+open the host page from the instance's **public IP**, the on-screen QR codes
+resolve to that public address and phones on any network can scan them.
+
+> If `curl http://localhost:4567/` returns empty while a previous run printed
+> `Server listening on port 4567`, you have a **stale process** holding the
+> port (`EADDRINUSE`). Kill it first: `pkill -f 'server/index.js'`, then
+> restart with the `nohup … & disown` line above.
+
+**Cloudflare Tunnel on the instance.** `npm run serve` needs `cloudflared`
+on `PATH`. The server tries to auto-install it (Linux:
+`cloudflared-linux-amd64`; Windows: `cloudflared-windows-amd64.exe`) if missing,
+and `chmod +x` the binary after download. If auto-install is blocked (e.g.
+no outbound GitHub access), install it yourself before starting:
 
 ```bash
 curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared
 chmod +x /usr/local/bin/cloudflared
 ```
 
-…then `NODE_ENV=production npm run serve` will pick it up and print the public
-URL. To skip the tunnel entirely and expose the instance directly, use
-`NODE_ENV=production NO_TUNNEL=1 npm run server` and open
-`http://<INSTANCE_PUBLIC_IP>:4567/` (the QR codes will point at that public IP).
+…then `NODE_ENV=production npm run serve` picks it up and prints the public
+`https://…trycloudflare.com` URL. To skip the tunnel entirely and expose the
+instance directly, use `NODE_ENV=production NO_TUNNEL=1 npm run server` and
+open `http://<INSTANCE_PUBLIC_IP>:4567/`.
 
 ---
 
