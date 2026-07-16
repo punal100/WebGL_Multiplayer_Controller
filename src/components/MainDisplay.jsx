@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { socket } from '../socket.js';
 import { KEY_MAP, dispatchSyntheticKey } from '../inputMap.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
 
-const GAME_NAME = 'TickTackToe';
+const DEFAULT_GAME = 'TickTackToe';
 
 export default function MainDisplay() {
+  const { gameName = DEFAULT_GAME } = useParams();
+  const GAME_NAME = gameName;
   const [lanIp, setLanIp] = useState('localhost');
   const [port, setPort] = useState(4567);
   const [origin, setOrigin] = useState('');
@@ -101,7 +104,7 @@ export default function MainDisplay() {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
     };
-  }, []);
+  }, [GAME_NAME]);
 
   const resetGame = () => {
     socket.emit('reset_game', { gameName: GAME_NAME });

@@ -16,6 +16,8 @@ const lanIp = getLanIp();
 console.log(`\n=== WebGL Multiplayer Controller ===`);
 console.log(`Local access:  http://localhost:${PORT}`);
 console.log(`LAN access:    http://${lanIp}:${PORT}`);
+console.log(`Pick a game:   http://${lanIp}:${PORT}/`);
+console.log(`Host TickTackToe: http://${lanIp}:${PORT}/TickTackToe`);
 console.log(`Controller 1:  http://${lanIp}:${PORT}/TickTackToe/1`);
 console.log(`Controller 2:  http://${lanIp}:${PORT}/TickTackToe/2\n`);
 
