@@ -16,6 +16,8 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
 
+    let state = null;
+
     function resize() {
       const rect = canvas.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
@@ -24,13 +26,33 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       // container has an unusual aspect ratio (e.g. the controller's
       // horizontal view). Avoid enforcing a minimum that would distort the
       // buffer's aspect ratio relative to the box.
-      canvas.width = Math.max(1, Math.round(rect.width * dpr));
-      canvas.height = Math.max(1, Math.round(rect.height * dpr));
+      const w = Math.max(1, Math.round(rect.width * dpr));
+      const h = Math.max(1, Math.round(rect.height * dpr));
+      // Only resize the buffer when the box actually has a non-zero size.
+      // Resizing to a 0xN (or Nx0) buffer during a flex reflow would produce
+      // a distorted/garbled frame and can surface as a purple placeholder.
+      if (rect.width > 0 && rect.height > 0) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      // Repaint one frame immediately so a mid-layout-transition buffer never
+      // lingers on screen.
+      if (mode === 'client' || mode === 'viewer') {
+        ctx.fillStyle = '#0b0e14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (state) renderState(ctx, canvas, state);
+      }
     }
+
+    // Host seeds an initial state immediately so its buffer is valid from the
+    // first frame. Client/viewer start with null state and wait for snapshots.
+    if (mode === 'host') {
+      state = createInitialState(canvas.width, canvas.height);
+    }
+
     resize();
     window.addEventListener('resize', resize);
 
-    let state = createInitialState(canvas.width, canvas.height);
     // Re-seed dimensions on resize for host so coordinates stay consistent
     const onResizeHost = () => {
       if (mode === 'host') state.w = canvas.width, state.h = canvas.height;
@@ -41,7 +63,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       // Neither client nor an extra viewer window ever simulates. They start
       // with no state and only draw once a real host snapshot arrives (no
       // initial-spawn flicker, no duplicate source of truth).
-      state = null;
       const onState = (snap) => {
         state = snap;
         window.__clientState = snap;
@@ -53,7 +74,11 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TickTack
       let running = true;
       const raf = requestAnimationFrame(function draw() {
         if (!running) return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Always paint a solid background so the canvas never shows through as
+        // a transparent/garbled (purple) placeholder when no snapshot has
+        // arrived yet or while the container is mid-resize.
+        ctx.fillStyle = '#0b0e14';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         if (state) renderState(ctx, canvas, state);
         requestAnimationFrame(draw);
       });
