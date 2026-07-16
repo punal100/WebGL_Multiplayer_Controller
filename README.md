@@ -2,7 +2,7 @@
 
 Turn any phone into a wireless game controller. This project hosts a **two-player WebGL game** in a browser on your PC and lets two players control it from their phones by scanning QR codes — no app install, just a webpage.
 
-Built for **local LAN / same-PC hosting** with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io).
+Built with a 6-hour vibe-coding roadmap (Node.js + Express + React + Socket.io). Works on **local LAN** and, out of the box, over the **public internet** via an auto-started Cloudflare Tunnel.
 
 ---
 
