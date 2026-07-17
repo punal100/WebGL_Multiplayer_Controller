@@ -23,7 +23,7 @@ const ARENA_H = 720;
 // Two input models are supported, selected per game via the registry:
 //   - 'keys'    (TankDuel): held-key real-time simulation (original path).
 //   - 'actions' (TicTacToe): discrete actions applied to authoritative state.
-export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel', windowRef }) {
+export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel' }) {
   const canvasRef = useRef(null);
   const gameDef = getGameDef(gameName);
   const inputModel = gameDef?.inputModel || 'keys';
@@ -97,14 +97,21 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       // Neither client nor an extra viewer window ever simulates. They start
       // with no state and only draw once a real host snapshot arrives (no
       // initial-spawn flicker, no duplicate source of truth).
+      // Accumulate transient events across snapshots (don't overwrite): the
+      // host streams ~30 snapshots/sec but the draw loop may run faster or
+      // slower, so several snapshots can arrive between two paint frames. If
+      // we only kept the LAST snapshot's events, the others' VFX/SFX would be
+      // dropped — the intermittent "effects don't play on the controller"
+      // desync. We cap the buffer so a stalled loop can't grow it forever.
+      let pendingEvents = [];
       const onState = (snap) => {
         state = snap;
         window.__clientState = snap;
-        // Capture this snapshot's transient events once; the draw loop consumes
-        // them a single time (so VFX/audio don't replay every render frame).
-        pendingEvents = snap && snap.events ? snap.events : [];
+        if (snap && snap.events && snap.events.length) {
+          for (const e of snap.events) pendingEvents.push(e);
+          if (pendingEvents.length > 256) pendingEvents = pendingEvents.slice(-256);
+        }
       };
-      let pendingEvents = [];
       socket.on('game_state', onState);
 
       // Repaint the latest snapshot every frame. A blank canvas is drawn
@@ -220,7 +227,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         }
       };
       window.addEventListener('keydown', onKeyDown);
-      if (windowRef) windowRef.current = window;
 
       // Steady repaint loop (also covers resume/reset broadcasts already sent).
       let running = true;
@@ -242,7 +248,6 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
         socket && socket.off('resume_state', onResume);
         socket && socket.off('game_reset', onReset);
         socket && socket.off('request_state', onRequestState);
-        if (windowRef) windowRef.current = null;
       };
     }
 
@@ -252,7 +257,18 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
     const onUp = (e) => keys.delete(e.key.toLowerCase());
     window.addEventListener('keydown', onDown);
     window.addEventListener('keyup', onUp);
-    if (windowRef) windowRef.current = window;
+
+    // Controller input arrives as a direct `game_key` custom event from
+    // MainDisplay (no fragile synthetic KeyboardEvents). Feed it straight into
+    // the same `keys` set the local keyboard uses, so phones drive the sim
+    // exactly like a physical keyboard would.
+    const onGameKey = (e) => {
+      const { key, state: kState } = e.detail || {};
+      if (!key) return;
+      if (kState === 'down') keys.add(key.toLowerCase());
+      else keys.delete(key.toLowerCase());
+    };
+    window.addEventListener('game_key', onGameKey);
 
     // Remote keyboard input relayed from other (viewer) main windows. Apply
     // it to the same keys set so input works in ANY main window while the
@@ -307,13 +323,13 @@ export default function GameCanvas({ mode = 'host', socket, gameName = 'TankDuel
       window.removeEventListener('resize', resize);
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
+      window.removeEventListener('game_key', onGameKey);
       socket && socket.off('resume_state', onResume);
       socket && socket.off('game_reset', onReset);
       socket && socket.off('host_key', onRemoteKey);
       socket && socket.off('request_state', onRequestState);
-      if (windowRef) windowRef.current = null;
     };
-  }, [mode, socket, gameName, windowRef, inputModel, gameDef]);
+  }, [mode, socket, gameName, inputModel, gameDef]);
 
   return <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />;
 }
