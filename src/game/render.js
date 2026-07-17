@@ -152,8 +152,12 @@ export function renderState(ctx, canvas, state, opts = {}) {
 
   // --- Particles / screen shake (VFX layer) ---
   // VFX particles are spawned in arena coordinates, so they live inside the
-  // same centered/uniformly-scaled transform as the playfield.
-  vfxLayer.draw(ctx, opts.dtSec || 0.016, shake);
+  // same centered/uniformly-scaled transform as the playfield. Pass the
+  // letterbox scale so the VFX layer scales particle positions/radii by the
+  // same `s` the world uses — otherwise effects (e.g. the Rico muzzle flash)
+  // would render at raw arena coords and drift toward the corner on any
+  // canvas whose size/aspect differs from the 1280x720 arena.
+  vfxLayer.draw(ctx, opts.dtSec || 0.016, shake, s);
 
   // Leave the arena transform so the HUD sits in screen space (top corners of
   // the canvas), independent of the centered playfield box.

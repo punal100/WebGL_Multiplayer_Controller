@@ -63,10 +63,18 @@ function hydrate(state) {
   if (typeof state.shake !== 'number') state.shake = 0;
   if (!Array.isArray(state.players)) return state;
   state.players.forEach((p, i) => {
-    if (!p.abilities) p.abilities = { DashCooldown: 0, MineCooldown: 0, SpecialFireCooldown: 0 };
-    if (typeof p.abilities.DashCooldown !== 'number') p.abilities.DashCooldown = 0;
-    if (typeof p.abilities.MineCooldown !== 'number') p.abilities.MineCooldown = 0;
-    if (typeof p.abilities.SpecialFireCooldown !== 'number') p.abilities.SpecialFireCooldown = 0;
+    // A serialized snapshot flattens the ability cooldowns onto `dash` /
+    // `mine` / `special` (see serialize()). When such a snapshot is resumed
+    // (e.g. after a host reload), restore them so cooldowns don't silently
+    // reset to 0 and let the player fire instantly.
+    const dash = p.dash ?? p.abilities?.DashCooldown;
+    const mine = p.mine ?? p.abilities?.MineCooldown;
+    const special = p.special ?? p.abilities?.SpecialFireCooldown;
+    p.abilities = {
+      DashCooldown: typeof dash === 'number' ? dash : 0,
+      MineCooldown: typeof mine === 'number' ? mine : 0,
+      SpecialFireCooldown: typeof special === 'number' ? special : 0,
+    };
     if (typeof p.turret !== 'number') p.turret = p.angle || 0;
     if (typeof p.isDashing !== 'boolean') p.isDashing = false;
     if (typeof p.dashTimer !== 'number') p.dashTimer = 0;

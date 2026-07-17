@@ -32,7 +32,7 @@ class VFXManager {
           this.spawnMuzzle(x, y, e.angle ?? 0, e.color, 12, 0.18);
           break;
         case 'vfx_special_muzzle':
-          this.spawnMuzzle(x, y, e.angle ?? 0, e.color, 18, 0.28);
+          this.spawnMuzzle(x, y, e.angle ?? 0, e.color, 18, 0.35);
           break;
         case 'vfx_spark':
           this.spawnSparks(x, y, e.color || '#ffd166', 6);
@@ -83,9 +83,8 @@ class VFXManager {
 
   spawnExplosion(x, y, color, big, small) {
     const s = big ? 1.7 : small ? 0.7 : 1;
-    // Layer 1: expanding white flash (alpha fades ~0.2s)
     this.particles.push({
-      kind: 'flash', x, y, r: 30 * s, life: 0.2, maxLife: 0.2, color: '#ffffff',
+      kind: 'flash', x, y, r: 30 * s, life: 0.4, maxLife: 0.4, color: '#ffffff',
     });
     // Layer 2: 15 orange squares with gravity (+ more for big booms)
     const n = big ? 26 : 15;
@@ -115,8 +114,15 @@ class VFXManager {
     }
   }
 
-  // Advance + draw all particles. `shake` (0..1) offsets the whole canvas.
-  draw(ctx, dtSec, shake = 0) {
+  // Advance + draw all particles. `shake` (0..1) offsets the whole canvas and
+  // `scale` (uniform letterbox scale) maps the arena-space particle coords onto
+  // the canvas so particles line up exactly with the world (tanks/bullets), which
+  // renderState draws scaled by the same `scale`. Without this, particles were
+  // drawn at raw arena coordinates while the world was scaled by `scale`, so on
+  // any canvas whose aspect/size differs from the 1280x720 arena (i.e. every
+  // client, controller, or differently-shaped window) VFX such as the muzzle
+  // flash appeared offset toward the corner instead of at the firing tank.
+  draw(ctx, dtSec, shake = 0, scale = 1) {
     let ox = 0, oy = 0;
     if (shake > 0) {
       ox = (Math.random() * 10 - 5) * shake;
@@ -124,6 +130,7 @@ class VFXManager {
     }
     ctx.save();
     ctx.translate(ox, oy);
+    if (scale !== 1) ctx.scale(scale, scale);
 
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
