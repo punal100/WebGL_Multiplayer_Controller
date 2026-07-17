@@ -135,15 +135,32 @@ Restart by re-running the `nohup … & disown` start line after stopping.
 
 ```bash
 npm install -g pm2
-pm2 start server/index.js --name "webgl-mp" --env production -- \
-  && pm2 stop webgl-mp          # clean stop anytime
-  && pm2 restart webgl-mp       # restart
-  && pm2 logs webgl-mp          # follow logs
-  && pm2 startup                # auto-start on reboot
+
+# Start (env vars go BEFORE the pm2 command, never after --)
+NODE_ENV=production NO_TUNNEL=1 pm2 start server/index.js --name "webgl-mp"
+
+pm2 stop webgl-mp       # clean stop anytime
+pm2 restart webgl-mp    # restart
+pm2 logs webgl-mp       # follow logs
+pm2 startup             # auto-start on reboot (then run the printed command)
+pm2 save                # persist the current process list
 ```
 
-Set env vars via `NODE_ENV=production NO_TUNNEL=1 pm2 start …` or a small
-`ecosystem.config.js`.
+> Env vars must be set **before** `pm2 start`, not after `--` (anything after
+> `--` is treated as the app's own args / an ecosystem file path). For a
+> persistent config, create `ecosystem.config.js`:
+>
+> ```js
+> module.exports = {
+>   apps: [{
+>     name: "webgl-mp",
+>     script: "server/index.js",
+>     env_production: { NODE_ENV: "production", NO_TUNNEL: "1" }
+>   }]
+> };
+> ```
+>
+> then: `pm2 start ecosystem.config.js --env production`.
 
 ---
 
