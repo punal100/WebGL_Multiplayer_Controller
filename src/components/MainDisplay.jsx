@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { socket } from '../socket.js';
-import { KEY_MAP, dispatchSyntheticKey } from '../inputMap.js';
+import { KEY_MAP } from '../inputMap.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
 import { getGameDef } from '../games.js';
@@ -27,7 +27,6 @@ export default function MainDisplay() {
   const [isViewer, setIsViewer] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
   const viewerRef = useRef(false);
-  const gameWindowRef = useRef(null);
   const pressedByController = useRef({ 1: new Set(), 2: new Set() });
 
   useEffect(() => {
@@ -50,7 +49,13 @@ export default function MainDisplay() {
       viewerRef.current = !authoritative;
     };
 
-    // --- 'keys' input model (TankDuel): controller buttons -> synthetic keys ---
+    // --- 'keys' input model (TankDuel): controller buttons -> held keys ---
+    // We feed the pressed key DIRECTLY into the authoritative host's simulation
+    // (via a custom event the GameCanvas listens to), instead of synthesizing
+    // fake KeyboardEvents. This is the same robust, direct path TicTacToe uses
+    // for actions, and avoids the fragile synthetic-keyboard dispatch that some
+    // browsers/environments drop — which is why controller input for TankDuel
+    // could fail to register while TicTacToe kept working.
     const onInputKeys = (payload) => {
       if (payload?.gameName && payload.gameName !== GAME_NAME) return;
       if (viewerRef.current) return;
@@ -61,13 +66,12 @@ export default function MainDisplay() {
       const key = map[button];
       if (!key) return;
       const pressed = pressedByController.current[id];
-      if (state === 'down') {
-        pressed.add(button);
-        dispatchSyntheticKey(gameWindowRef.current, key, true);
-      } else {
-        pressed.delete(button);
-        dispatchSyntheticKey(gameWindowRef.current, key, false);
-      }
+      if (state === 'down') pressed.add(button);
+      else pressed.delete(button);
+      // The authoritative host's GameCanvas owns the `keys` set; tell it.
+      window.dispatchEvent(
+        new CustomEvent('game_key', { detail: { key, state } })
+      );
     };
 
     // --- 'actions' input model (TicTacToe): forward the button press to the
@@ -102,7 +106,7 @@ export default function MainDisplay() {
         const pressed = pressedByController.current[id];
         pressed.forEach((button) => {
           const key = map[button];
-          if (key) dispatchSyntheticKey(gameWindowRef.current, key, false);
+          if (key) window.dispatchEvent(new CustomEvent('game_key', { detail: { key, state: 'up' } }));
         });
         pressed.clear();
       }
@@ -191,7 +195,6 @@ export default function MainDisplay() {
             mode={isViewer ? 'viewer' : 'host'}
             socket={socket}
             gameName={GAME_NAME}
-            windowRef={isViewer ? undefined : gameWindowRef}
           />
         </div>
         <div className="controls-legend">
