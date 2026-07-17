@@ -58,15 +58,3 @@ export function keyToEventProps(key) {
   const code = `Key${key.toUpperCase()}`;
   return { key, code };
 }
-
-// Dispatches a synthetic keyboard event on the given target window.
-export function dispatchSyntheticKey(targetWindow, key, isDown) {
-  const { code } = keyToEventProps(key);
-  const event = new KeyboardEvent(isDown ? 'keydown' : 'keyup', {
-    key,
-    code,
-    bubbles: true,
-    cancelable: true,
-  });
-  (targetWindow || window).dispatchEvent(event);
-}
