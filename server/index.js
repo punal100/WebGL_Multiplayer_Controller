@@ -181,12 +181,26 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Host (or any client) requests a full reset of the room state. Only the
-  // authoritative host may reset the single source of truth.
-  socket.on('reset_game', (_payload) => {
+  // Host (or any client/main window) requests a full reset of the room state.
+  // The authoritative host owns the single source of truth, so only IT may
+  // reseed the local simulation — but a Reset click from a NON-authoritative
+  // (viewer) main window must still work. If the sender isn't the authoritative
+  // host, relay the request to it; otherwise apply + broadcast right away.
+  // Either way `game_reset` is broadcast to the whole room so every screen
+  // (and the server's persisted snapshot) is cleared in sync.
+  // Full reset of the room's authoritative state. The authoritative host owns
+  // the single source of truth and is the only one whose local simulation
+  // actually reseeds (its GameCanvas listens for `game_reset`), but a Reset
+  // click can come from ANY main window — the authoritative host, a viewer
+  // window, or even a controller. So we accept the request from anyone in the
+  // room and, as long as an authoritative host exists, clear the server's
+  // persisted snapshot and broadcast `game_reset` to the whole room. The host
+  // reseeds its sim; every other screen falls in line via the next snapshot.
+  socket.on('reset_game', () => {
     const room = socket.data.room;
     if (!room) return;
-    if (!socket.data.authoritative || roomHost.get(room) !== socket.id) return;
+    const hostId = roomHost.get(room);
+    if (!hostId) return; // no authoritative host in this room yet
     roomState.delete(room);
     io.to(room).emit('game_reset', { gameName: room });
   });
