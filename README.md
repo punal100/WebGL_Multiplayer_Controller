@@ -92,6 +92,61 @@ Controller 2:  http://192.168.1.8:4567/Game/TankDuel/2
 
 ---
 
+## Running the Server (nohup) & Managing It
+
+The app listens on **port `4567`** (override with `PORT`). Start it detached
+(so it survives SSH/logout) with:
+
+```bash
+cd /root/webgl-mp && nohup env NODE_ENV=production NO_TUNNEL=1 npm run server > /root/server.log 2>&1 & disown
+```
+
+- `> /root/server.log 2>&1` — all output goes to the log file.
+- `& disown` — detach from the shell so it keeps running after you disconnect.
+- `NODE_ENV=production` and `NO_TUNNEL=1` — plain server, no auto Cloudflare Tunnel.
+
+Follow logs: `tail -f /root/server.log`
+Verify: `curl -s http://localhost:4567/ | head -c 200`
+
+### Stopping / restarting (disown strips job control, so use these)
+
+**By port (simplest, single command):**
+
+```bash
+fuser -k 4567/tcp
+```
+
+**By process search (if you don't know the port):**
+
+```bash
+pgrep -a node                 # find the PID + script path
+kill <PID>                    # terminate it
+```
+
+Restart by re-running the `nohup … & disown` start line after stopping.
+
+> If `curl` returns empty while a previous run printed `Server listening`,
+> a stale process is holding the port (`EADDRINUSE`): `pkill -f 'server/index.js'`
+> then restart.
+
+### Better alternative: PM2 (recommended for production)
+
+`nohup`/`disown` makes process management fragile. Use a process manager instead:
+
+```bash
+npm install -g pm2
+pm2 start server/index.js --name "webgl-mp" --env production -- \
+  && pm2 stop webgl-mp          # clean stop anytime
+  && pm2 restart webgl-mp       # restart
+  && pm2 logs webgl-mp          # follow logs
+  && pm2 startup                # auto-start on reboot
+```
+
+Set env vars via `NODE_ENV=production NO_TUNNEL=1 pm2 start …` or a small
+`ecosystem.config.js`.
+
+---
+
 ## Production / Shipping Deployment
 
 This section explains how to take a **distribution build** and run it in a
