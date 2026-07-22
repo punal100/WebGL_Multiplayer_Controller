@@ -121,7 +121,7 @@ export default function VirtualController() {
         </button>
       </div>
       <div className="controller__view">
-        <GameCanvas socket={socket} gameName={gameName} />
+        <GameCanvas socket={socket} gameName={gameName} smoothMotion />
       </div>
       <div className="controller__body">
         <div className="dpad">

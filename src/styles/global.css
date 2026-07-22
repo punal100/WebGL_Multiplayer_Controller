@@ -267,6 +267,10 @@ body {
   border: 1px solid #ffffff14;
   flex: 0 0 auto;
 }
+
+.controller__view canvas {
+  display: block;
+}
 .controller__body {
   flex: 1;
   display: flex;
@@ -529,4 +533,3 @@ body {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-
