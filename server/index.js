@@ -53,13 +53,39 @@ const roomState = new Map();
 const roomInputModel = new Map();
 const roomKeys = new Map();
 const TICK_MS = 33;
+const CONTROLLER_KEYS = {
+  1: { up: 'w', down: 's', left: 'a', right: 'd', a: 'q', b: 'e', x: 'r', y: 'f' },
+  2: { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', a: ',', b: '.', x: '/', y: "'" },
+};
 
-function releaseRoom(room, socket) {
+function releaseSocket(room, socket) {
   if (!room) return;
-  if (socket.data.role === 'host') {
+  const keys = roomKeys.get(room);
+  if (keys) keys.delete(socket.id);
+
+  if (socket.data.role === 'controller') {
+    const cid = String(socket.data.controllerId);
+    const controllers = roomControllers.get(room);
+    const sockets = controllers && controllers.get(cid);
+    if (sockets) {
+      sockets.delete(socket.id);
+      if (sockets.size === 0) {
+        controllers.delete(cid);
+        socket.to(room).emit('controller_disconnected', { controllerId: cid });
+      }
+      if (controllers.size === 0) roomControllers.delete(room);
+    }
+  }
+}
+
+function releaseEmptyRoom(room) {
+  if (!room) return;
+  const members = io.sockets.adapter.rooms.get(room);
+  if (!members || members.size === 0) {
     roomState.delete(room);
     roomInputModel.delete(room);
     roomKeys.delete(room);
+    roomControllers.delete(room);
   }
 }
 
@@ -71,8 +97,8 @@ io.on('connection', (socket) => {
 
     const prevRoom = socket.data.room;
     if (prevRoom && prevRoom !== room) {
-      socket.leave(prevRoom);
-      releaseRoom(prevRoom, socket);
+      releaseSocket(prevRoom, socket);
+      Promise.resolve(socket.leave(prevRoom)).then(() => releaseEmptyRoom(prevRoom));
     }
 
     socket.data.room = room;
@@ -82,7 +108,10 @@ io.on('connection', (socket) => {
 
     if (role === 'controller') {
       if (!roomControllers.has(room)) roomControllers.set(room, new Map());
-      roomControllers.get(room).set(String(controllerId), socket.id);
+      const controllers = roomControllers.get(room);
+      const cid = String(controllerId);
+      if (!controllers.has(cid)) controllers.set(cid, new Set());
+      controllers.get(cid).add(socket.id);
       io.to(room).emit('controller_status', { controllerId, connected: true });
     } else if (role === 'host') {
       roomInputModel.set(room, inputModel);
@@ -111,13 +140,17 @@ io.on('connection', (socket) => {
           }
         }
     } else {
-      const cid = String(payload.controllerId);
       if (!roomKeys.has(room)) roomKeys.set(room, new Map());
       const controllerKeys = roomKeys.get(room);
-      if (!controllerKeys.has(cid)) controllerKeys.set(cid, new Set());
-      const keys = controllerKeys.get(cid);
-      if (payload.state === 'down') keys.add(payload.button);
-      else keys.delete(payload.button);
+      if (!controllerKeys.has(socket.id)) controllerKeys.set(socket.id, new Set());
+      const keys = controllerKeys.get(socket.id);
+      const controllerId = String(socket.data.controllerId);
+      const controls = CONTROLLER_KEYS[controllerId];
+      if (!controls) return;
+      const key = controls[payload.button];
+      if (!key) return;
+      if (payload.state === 'down') keys.add(key);
+      else keys.delete(key);
     }
   });
 
@@ -128,11 +161,12 @@ io.on('connection', (socket) => {
     if (inputModel !== 'keys') return;
     if (!roomKeys.has(room)) roomKeys.set(room, new Map());
     const hostKeys = roomKeys.get(room);
-    const hostId = 'host';
-    if (!hostKeys.has(hostId)) hostKeys.set(hostId, new Set());
-    const keys = hostKeys.get(hostId);
-    if (payload.state === 'down') keys.add(payload.key);
-    else keys.delete(payload.key);
+    if (!hostKeys.has(socket.id)) hostKeys.set(socket.id, new Set());
+    const keys = hostKeys.get(socket.id);
+    const key = String(payload.key || '').toLowerCase();
+    if (!key) return;
+    if (payload.state === 'down') keys.add(key);
+    else keys.delete(key);
   });
 
   socket.on('request_state', () => {
@@ -155,25 +189,19 @@ io.on('connection', (socket) => {
   socket.on('leave_game', () => {
     const { room } = socket.data;
     if (!room) return;
-    socket.leave(room);
-    releaseRoom(room, socket);
+    releaseSocket(room, socket);
     socket.data.room = null;
+    socket.data.role = null;
+    socket.data.controllerId = null;
+    Promise.resolve(socket.leave(room)).then(() => releaseEmptyRoom(room));
+  });
+
+  socket.on('disconnecting', () => {
+    releaseSocket(socket.data.room, socket);
   });
 
   socket.on('disconnect', () => {
-    const { room, role } = socket.data;
-    if (role === 'controller' && room) {
-      const cid = String(socket.data.controllerId);
-      const m = roomControllers.get(room);
-      if (m) {
-        m.delete(cid);
-        socket.to(room).emit('controller_disconnected', { controllerId: cid });
-      }
-      const ck = roomKeys.get(room);
-      if (ck) ck.delete(cid);
-    } else if (role === 'host' && room) {
-      releaseRoom(room, socket);
-    }
+    releaseEmptyRoom(socket.data.room);
   });
 });
 
@@ -193,8 +221,10 @@ setInterval(() => {
       }
     }
     step(room, state, keys, TICK_MS);
+    const snapshot = serialize(room, state);
+    if (Array.isArray(state.events)) state.events = [];
     roomState.set(room, state);
-    io.to(room).emit('game_state', serialize(room, state));
+    io.to(room).emit('game_state', snapshot);
   }
 }, TICK_MS);
 

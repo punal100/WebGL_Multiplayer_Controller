@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { socket } from '../socket.js';
-import { getGameDef } from '../games.js';
 import { audio } from '../game/audio.js';
 import GameCanvas from './GameCanvas.jsx';
 import BrandLogo from './BrandLogo.jsx';
@@ -12,8 +11,6 @@ const DEFAULT_GAME = 'TankDuel';
 export default function MainDisplay() {
   const { gameName = DEFAULT_GAME } = useParams();
   const GAME_NAME = gameName;
-  const gameDef = getGameDef(GAME_NAME);
-  const inputModel = gameDef?.inputModel || 'keys';
 
   const [lanIp, setLanIp] = useState('localhost');
   const [port, setPort] = useState(4567);
@@ -32,7 +29,9 @@ export default function MainDisplay() {
       })
       .catch(() => {});
 
-    socket.emit('join_game', { gameName: GAME_NAME, role: 'host' });
+    const joinGame = () => socket.emit('join_game', { gameName: GAME_NAME, role: 'host' });
+    socket.on('connect', joinGame);
+    if (socket.connected) joinGame();
 
     const onStatus = ({ controllerId, connected }) => {
       setStatus((s) => ({ ...s, [String(controllerId)]: connected }));
@@ -57,11 +56,12 @@ export default function MainDisplay() {
     return () => {
       socket.off('controller_status', onStatus);
       socket.off('controller_disconnected', onDisconnect);
+      socket.off('connect', joinGame);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       socket.emit('leave_game', { gameName: GAME_NAME });
     };
-  }, [GAME_NAME, inputModel]);
+  }, [GAME_NAME]);
 
   const resetGame = () => {
     socket.emit('reset_game', { gameName: GAME_NAME });

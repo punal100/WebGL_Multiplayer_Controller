@@ -53,17 +53,18 @@ export default function VirtualController() {
   };
 
   useEffect(() => {
-    socket.emit('join_game', {
-      gameName,
-      role: 'controller',
-      controllerId: id,
+    const joinGame = () => socket.emit('join_game', {
+      gameName, role: 'controller', controllerId: id,
     });
 
-    const onConnect = () => setConnected(true);
+    const onConnect = () => {
+      setConnected(true);
+      joinGame();
+    };
     const onDisconnect = () => setConnected(false);
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
-    setConnected((c) => (c === socket.connected ? c : socket.connected));
+    if (socket.connected) joinGame();
 
     const onResize = () => setHorizontal(detectHorizontal());
     window.addEventListener('resize', onResize);
@@ -72,7 +73,6 @@ export default function VirtualController() {
     return () => {
       socket.off('connect', onConnect);
       socket.off('disconnect', onDisconnect);
-      clearTimeout();
       window.removeEventListener('resize', onResize);
       window.removeEventListener('orientationchange', onResize);
       socket.emit('leave_game', { gameName, controllerId: id });
