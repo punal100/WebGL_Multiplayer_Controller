@@ -1,27 +1,15 @@
-// Authoritative game simulation. Pure logic: given a Set of currently-held
-// keys, advance state by dt (ms) and return a serializable snapshot.
-// Runs ONLY on the host. Controllers receive snapshots and just render them.
-//
-// Per the Tank Duel overhaul directives (TankDuel_AI_Instructions*.md) this
-// engine now owns three new abilities, destructible/indestructible walls, a
-// decoupled event bus, and a screen-shake trigger. The render + audio + vfx
-// layers all consume `state.events` — the core loop never draws or plays sound.
-
-// Static per-player control mappings. Kept OUT of the serialized state so
-// resumed/persisted snapshots (which omit it) still simulate correctly.
-export const PLAYER_CONTROLS = [
+const PLAYER_CONTROLS = [
   { up: 'w', down: 's', left: 'a', right: 'd', fire: 'q', dash: 'e', mine: 'r', special: 'f' },
   { up: 'arrowup', down: 'arrowdown', left: 'arrowleft', right: 'arrowright', fire: ',', dash: '.', mine: '/', special: "'" },
 ];
 
-// Ability tuning constants (seconds).
-export const ABILITY = {
+const ABILITY = {
   DASH_DURATION: 0.2,
   DASH_COOLDOWN: 3.0,
   DASH_MULTIPLIER: 3.0,
   MINE_COOLDOWN: 8.0,
   MINE_HEALTH: 50,
-  MINE_LIFETIME: 20, // seconds before a barricade rusts away
+  MINE_LIFETIME: 20,
   SPECIAL_COOLDOWN: 5.0,
   SPECIAL_BOUNCES: 2,
   FIRE_COOLDOWN: 28,
@@ -29,31 +17,13 @@ export const ABILITY = {
 
 function makePlayer(x, y, angle, color, idx) {
   return {
-    idx,
-    x,
-    y,
-    angle, // hull rotation (drives & aims on this simple build)
-    turret: angle, // independent turret rotation (V2 layered-sprite spec)
-    color,
-    cooldown: 0,
-    score: 0,
-    alive: true,
-    respawn: 0,
-    // Ability state (V2 exact structures)
-    abilities: {
-      DashCooldown: 0,
-      MineCooldown: 0,
-      SpecialFireCooldown: 0,
-    },
-    isDashing: false,
-    dashTimer: 0,
-    moving: false,
+    idx, x, y, angle, turret: angle, color,
+    cooldown: 0, score: 0, alive: true, respawn: 0,
+    abilities: { DashCooldown: 0, MineCooldown: 0, SpecialFireCooldown: 0 },
+    isDashing: false, dashTimer: 0, moving: false,
   };
 }
 
-// Fill in any fields a snapshot might be missing (e.g. an older persisted
-// state from before the ability/wall overhaul). Keeps the sim crash-proof
-// when resuming from the server.
 function hydrate(state) {
   if (!state) return state;
   if (!Array.isArray(state.walls)) state.walls = [];
@@ -63,13 +33,9 @@ function hydrate(state) {
   if (typeof state.shake !== 'number') state.shake = 0;
   if (!Array.isArray(state.players)) return state;
   state.players.forEach((p, i) => {
-    // A serialized snapshot flattens the ability cooldowns onto `dash` /
-    // `mine` / `special` (see serialize()). When such a snapshot is resumed
-    // (e.g. after a host reload), restore them so cooldowns don't silently
-    // reset to 0 and let the player fire instantly.
-    const dash = p.dash ?? p.abilities?.DashCooldown;
-    const mine = p.mine ?? p.abilities?.MineCooldown;
-    const special = p.special ?? p.abilities?.SpecialFireCooldown;
+    const dash = p.dash ?? (p.abilities && p.abilities.DashCooldown);
+    const mine = p.mine ?? (p.abilities && p.abilities.MineCooldown);
+    const special = p.special ?? (p.abilities && p.abilities.SpecialFireCooldown);
     p.abilities = {
       DashCooldown: typeof dash === 'number' ? dash : 0,
       MineCooldown: typeof mine === 'number' ? mine : 0,
@@ -84,10 +50,9 @@ function hydrate(state) {
   return state;
 }
 
-export function createInitialState(w = 1280, h = 720) {
+function createTankState(w, h) {
   const state = {
-    w,
-    h,
+    w, h,
     players: [
       makePlayer(w * 0.3, h * 0.5, 0, '#4cc9f0', 0),
       makePlayer(w * 0.7, h * 0.5, Math.PI, '#f72585', 1),
@@ -95,60 +60,40 @@ export function createInitialState(w = 1280, h = 720) {
     bullets: [],
     barricades: [],
     walls: [
-      // Indestructible arena fixtures (choke points for bouncing rounds)
       { x: w * 0.5, y: h * 0.28, w: 70, h: 18, hp: Infinity },
       { x: w * 0.5, y: h * 0.72, w: 70, h: 18, hp: Infinity },
       { x: w * 0.22, y: h * 0.5, w: 18, h: 90, hp: Infinity },
       { x: w * 0.78, y: h * 0.5, w: 18, h: 90, hp: Infinity },
     ],
-    events: [], // transient frame events for vfx/audio/screenshake
-    shake: 0, // remaining screen-shake intensity (0..1)
+    events: [],
+    shake: 0,
   };
   return state;
 }
 
-// Flush and return the accumulated events for this frame. The renderer/audio
-// consume these and then call clearEvents so they don't replay next frame.
 function emit(state, type, data) {
   state.events.push({ type, ...data });
 }
 
-export function serialize(state) {
+function serializeTank(state) {
   return {
-    w: state.w,
-    h: state.h,
+    w: state.w, h: state.h,
     players: state.players.map((p) => ({
-      idx: p.idx,
-      x: Math.round(p.x),
-      y: Math.round(p.y),
-      angle: +p.angle.toFixed(3),
-      turret: +p.turret.toFixed(3),
-      score: p.score,
-      alive: p.alive,
-      color: p.color,
-      cooldown: p.cooldown,
-      respawn: p.respawn,
-      moving: p.moving,
-      isDashing: p.isDashing,
+      idx: p.idx, x: Math.round(p.x), y: Math.round(p.y),
+      angle: +p.angle.toFixed(3), turret: +p.turret.toFixed(3),
+      score: p.score, alive: p.alive, color: p.color, cooldown: p.cooldown,
+      respawn: p.respawn, moving: p.moving, isDashing: p.isDashing,
       dash: +p.abilities.DashCooldown.toFixed(2),
       mine: +p.abilities.MineCooldown.toFixed(2),
       special: +p.abilities.SpecialFireCooldown.toFixed(2),
     })),
     bullets: state.bullets.map((b) => ({
-      x: Math.round(b.x),
-      y: Math.round(b.y),
-      color: b.color,
-      ricochet: !!b.ricochet,
-      bounces: b.bounces,
+      x: Math.round(b.x), y: Math.round(b.y), color: b.color,
+      ricochet: !!b.ricochet, bounces: b.bounces,
     })),
-    barricades: state.barricades.map((m) => ({
-      x: Math.round(m.x),
-      y: Math.round(m.y),
-      hp: m.hp,
-    })),
+    barricades: state.barricades.map((m) => ({ x: Math.round(m.x), y: Math.round(m.y), hp: m.hp })),
     walls: state.walls.map((wl) => ({ x: wl.x, y: wl.y, w: wl.w, h: wl.h })),
     shake: +state.shake.toFixed(3),
-    // Transient events for this frame so viewers/clients can replay VFX+audio.
     events: state.events.map((e) => ({ ...e, x: Math.round(e.x ?? 0), y: Math.round(e.y ?? 0) })),
   };
 }
@@ -173,15 +118,14 @@ function resolveRectCollision(obj, rect, r) {
   return 'y';
 }
 
-export function step(state, keys, dt) {
+function stepTank(state, keys, dt) {
   state = hydrate(state);
   const w = state.w;
   const h = state.h;
-  const f = dt / 16; // frame-normalized step (1 == 16ms)
+  const f = dt / 16;
   const turn = 0.045 * f;
   const speed = 2.2 * f;
 
-  // Decay screen shake.
   if (state.shake > 0) state.shake = Math.max(0, state.shake - 0.04 * f);
 
   state.players.forEach((p, idx) => {
@@ -197,10 +141,8 @@ export function step(state, keys, dt) {
       }
       return;
     }
-
     p.moving = false;
 
-    // --- Cooldowns ---
     if (p.abilities.DashCooldown > 0) p.abilities.DashCooldown = Math.max(0, p.abilities.DashCooldown - dt / 1000);
     if (p.abilities.MineCooldown > 0) p.abilities.MineCooldown = Math.max(0, p.abilities.MineCooldown - dt / 1000);
     if (p.abilities.SpecialFireCooldown > 0) p.abilities.SpecialFireCooldown = Math.max(0, p.abilities.SpecialFireCooldown - dt / 1000);
@@ -210,11 +152,8 @@ export function step(state, keys, dt) {
       if (p.dashTimer <= 0) p.isDashing = false;
     }
 
-    // --- Steering ---
     if (keys.has(c.left)) p.angle -= turn;
     if (keys.has(c.right)) p.angle += turn;
-    // Turret aims opposite stick / independent: for keyboard we let the
-    // same WASD drive hull and turret tracks hull, but allow fire to lead.
     p.turret = p.angle;
 
     let mv = 1;
@@ -231,13 +170,11 @@ export function step(state, keys, dt) {
       p.moving = true;
     }
 
-    // Keep inside arena + collide with walls/barricades.
     p.x = Math.max(16, Math.min(w - 16, p.x));
     p.y = Math.max(16, Math.min(h - 16, p.y));
     for (const wl of state.walls) resolveRectCollision(p, wl, 14);
     for (const b of state.barricades) resolveRectCollision(p, b, 14);
 
-    // --- Ability 1: Dash / Evade ---
     if (keys.has(c.dash) && p.abilities.DashCooldown <= 0 && !p.isDashing) {
       p.isDashing = true;
       p.dashTimer = ABILITY.DASH_DURATION;
@@ -245,24 +182,17 @@ export function step(state, keys, dt) {
       emit(state, 'vfx_dash', { x: p.x, y: p.y, color: p.color });
     }
 
-    // --- Ability 2: Deployable Barricade ---
     if (keys.has(c.mine) && p.abilities.MineCooldown <= 0) {
       const bx = p.x - Math.cos(p.angle) * 50;
       const by = p.y - Math.sin(p.angle) * 50;
       state.barricades.push({
-        x: bx,
-        y: by,
-        w: 28,
-        h: 28,
-        hp: ABILITY.MINE_HEALTH,
-        life: ABILITY.MINE_LIFETIME,
-        owner: p.idx,
+        x: bx, y: by, w: 28, h: 28,
+        hp: ABILITY.MINE_HEALTH, life: ABILITY.MINE_LIFETIME, owner: p.idx,
       });
       p.abilities.MineCooldown = ABILITY.MINE_COOLDOWN;
       emit(state, 'sfx_deploy', { x: bx, y: by });
     }
 
-    // --- Fire (normal round) ---
     if (keys.has(c.fire) && p.cooldown <= 0) {
       p.cooldown = ABILITY.FIRE_COOLDOWN;
       const bs = 7;
@@ -271,17 +201,13 @@ export function step(state, keys, dt) {
         y: p.y + Math.sin(p.angle) * 24,
         vx: Math.cos(p.angle) * bs,
         vy: Math.sin(p.angle) * bs,
-        owner: p,
-        color: p.color,
-        life: 120,
-        ricochet: false,
-        bounces: 0,
+        owner: p, color: p.color, life: 120,
+        ricochet: false, bounces: 0,
       });
       emit(state, 'sfx_shoot', { x: p.x, y: p.y, pitch: 0.9 + Math.random() * 0.2 });
       emit(state, 'vfx_muzzle', { x: p.x + Math.cos(p.angle) * 24, y: p.y + Math.sin(p.angle) * 24, angle: p.angle, color: p.color });
     }
 
-    // --- Ability 3: Special Ricochet Round ---
     if (keys.has(c.special) && p.abilities.SpecialFireCooldown <= 0) {
       p.abilities.SpecialFireCooldown = ABILITY.SPECIAL_COOLDOWN;
       const bs = 7.5;
@@ -290,18 +216,14 @@ export function step(state, keys, dt) {
         y: p.y + Math.sin(p.angle) * 24,
         vx: Math.cos(p.angle) * bs,
         vy: Math.sin(p.angle) * bs,
-        owner: p,
-        color: p.color,
-        life: 240,
-        ricochet: true,
-        bounces: ABILITY.SPECIAL_BOUNCES,
+        owner: p, color: p.color, life: 240,
+        ricochet: true, bounces: ABILITY.SPECIAL_BOUNCES,
       });
       emit(state, 'vfx_special_muzzle', { x: p.x + Math.cos(p.angle) * 24, y: p.y + Math.sin(p.angle) * 24, angle: p.angle, color: p.color });
       emit(state, 'sfx_shoot', { x: p.x, y: p.y, pitch: 0.8 + Math.random() * 0.2 });
     }
   });
 
-  // --- Barricade aging ---
   for (let i = state.barricades.length - 1; i >= 0; i--) {
     const b = state.barricades[i];
     b.life -= dt / 1000;
@@ -311,16 +233,13 @@ export function step(state, keys, dt) {
     }
   }
 
-  // --- Bullets ---
   for (let i = state.bullets.length - 1; i >= 0; i--) {
     const b = state.bullets[i];
     b.x += b.vx * f;
     b.y += b.vy * f;
     b.life -= f;
-
     let consumed = false;
 
-    // Wall / barricade collision (ricochet reflects the velocity vector).
     const blockers = [...state.walls, ...state.barricades];
     for (const rect of blockers) {
       if (!rectHit(b.x, b.y, 4, rect)) continue;
@@ -335,8 +254,6 @@ export function step(state, keys, dt) {
         emit(state, 'vfx_spark', { x: b.x, y: b.y, color: '#ffd166' });
         break;
       }
-      // Destructible barricade takes damage; non-ricochet & ricochet-out
-      // bullets both detonate on solids.
       if (Number.isFinite(rect.hp)) {
         rect.hp -= 25;
         if (rect.hp <= 0) {
@@ -355,7 +272,6 @@ export function step(state, keys, dt) {
     if (consumed) continue;
 
     if (b.life <= 0 || b.x < 0 || b.x > w || b.y < 0 || b.y > h) {
-      // Ricochet rounds bounce off arena edges too.
       if (b.ricochet && b.bounces > 0) {
         if (b.x < 0 || b.x > w) b.vx = -b.vx;
         if (b.y < 0 || b.y > h) b.vy = -b.vy;
@@ -370,11 +286,6 @@ export function step(state, keys, dt) {
       continue;
     }
 
-    // Tank hit. A tank that is currently dashing phases through enemy
-    // projectiles (V2: "Ignore collision with enemy projectiles while
-    // IsDashing == true"). Its own shots still kill normally.
-    // Bullets loaded from a serialized snapshot carry no live `owner`
-    // reference, so we skip them here — they'll simply expire.
     for (const target of state.players) {
       if (!target.alive || target === b.owner) continue;
       if (!b.owner) continue;
@@ -393,12 +304,127 @@ export function step(state, keys, dt) {
       }
     }
   }
-
   return state;
 }
 
-export function consumeEvents(state) {
-  const ev = state.events;
-  state.events = [];
-  return ev;
+function createTTTState() {
+  return {
+    board: Array(9).fill(null),
+    turn: 'X',
+    cursor: 4,
+    winner: null,
+    lastMove: null,
+    scores: { X: 0, O: 0 },
+  };
+}
+
+function serializeTTT(state) {
+  return {
+    board: state.board.slice(),
+    turn: state.turn,
+    cursor: state.cursor,
+    winner: state.winner,
+    lastMove: state.lastMove,
+    scores: { X: state.scores.X, O: state.scores.O },
+  };
+}
+
+const LINES = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6],
+];
+
+function checkWinner(board) {
+  for (const [a, b, c] of LINES) {
+    if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+      return { winner: board[a], line: [a, b, c] };
+    }
+  }
+  if (board.every((cell) => cell)) return { winner: 'draw', line: null };
+  return { winner: null, line: null };
+}
+
+function applyTTTAction(state, controllerId, action) {
+  const mark = String(controllerId) === '1' ? 'X' : 'O';
+  if (state.winner) {
+    if (action === 'restart') {
+      const next = createTTTState();
+      next.scores = { X: state.scores.X, O: state.scores.O };
+      return next;
+    }
+    return state;
+  }
+  if (action === 'place') {
+    if (state.turn !== mark) return state;
+    if (state.board[state.cursor]) return state;
+    const board = state.board.slice();
+    board[state.cursor] = mark;
+    const { winner } = checkWinner(board);
+    const next = {
+      board,
+      lastMove: state.cursor,
+      winner,
+      turn: state.turn === 'X' ? 'O' : 'X',
+      cursor: state.cursor,
+      scores: state.scores,
+    };
+    if (winner === 'X') next.scores = { ...state.scores, X: state.scores.X + 1 };
+    if (winner === 'O') next.scores = { ...state.scores, O: state.scores.O + 1 };
+    return next;
+  }
+  if (state.turn !== mark) return state;
+  let cursor = state.cursor;
+  if (action === 'up') cursor = cursor - 3 >= 0 ? cursor - 3 : cursor;
+  else if (action === 'down') cursor = cursor + 3 <= 8 ? cursor + 3 : cursor;
+  else if (action === 'left') cursor = cursor % 3 > 0 ? cursor - 1 : cursor;
+  else if (action === 'right') cursor = cursor % 3 < 2 ? cursor + 1 : cursor;
+  else return state;
+  return { ...state, cursor };
+}
+
+export const GAME_REGISTRY = {
+  TankDuel: {
+    inputModel: 'keys',
+    engine: {
+      createInitialState: createTankState,
+      serialize: serializeTank,
+      step: stepTank,
+    },
+  },
+  TicTacToe: {
+    inputModel: 'actions',
+    inputSchema: {
+      up: 'up', down: 'down', left: 'left', right: 'right',
+      a: 'place', b: 'restart', x: 'restart', y: 'place',
+    },
+    engine: {
+      createInitialState: createTTTState,
+      serialize: serializeTTT,
+      applyAction: applyTTTAction,
+    },
+  },
+};
+
+export function getGameDef(name) {
+  return GAME_REGISTRY[name] || null;
+}
+
+export function createInitialState(name, w, h) {
+  const def = GAME_REGISTRY[name];
+  if (!def || !def.engine || !def.engine.createInitialState) return null;
+  if (name === 'TankDuel') return def.engine.createInitialState(w, h);
+  return def.engine.createInitialState();
+}
+
+export function serialize(name, state) {
+  const def = GAME_REGISTRY[name];
+  if (!def || !def.engine || !def.engine.serialize) return state;
+  return def.engine.serialize(state);
+}
+
+export function step(name, state, keys, dt) {
+  const def = GAME_REGISTRY[name];
+  if (!def || !def.engine || !def.engine.step) return state;
+  return def.engine.step(state, keys, dt);
 }
