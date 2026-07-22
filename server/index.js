@@ -68,7 +68,7 @@ io.on('connection', (socket) => {
   socket.on('join_game', ({ gameName, role, controllerId }) => {
     const room = gameName || 'TankDuel';
     const gameDef = getGameDef(room);
-    const inputModel = gameDef?.inputModel || 'keys';
+    const inputModel = gameDef ? (gameDef.inputModel || 'keys') : 'keys';
 
     const prevRoom = socket.data.room;
     if (prevRoom && prevRoom !== room) {
@@ -88,8 +88,8 @@ io.on('connection', (socket) => {
     } else if (role === 'host') {
       roomInputModel.set(room, inputModel);
       if (!roomState.has(room)) {
-        const engine = gameDef?.engine;
-        if (engine?.createInitialState) {
+        const engine = gameDef ? gameDef.engine : null;
+        if (engine && engine.createInitialState) {
           roomState.set(room, engine.createInitialState());
         }
       }
@@ -107,7 +107,7 @@ io.on('connection', (socket) => {
 
     if (inputModel === 'actions') {
       const gameDef = getGameDef(room);
-      if (gameDef?.engine?.applyAction) {
+      if (gameDef && gameDef.engine && gameDef.engine.applyAction) {
         const next = gameDef.engine.applyAction(state, String(payload.controllerId), payload.button);
         if (next !== state) {
           roomState.set(room, next);
@@ -145,7 +145,8 @@ io.on('connection', (socket) => {
     const snap = roomState.get(room);
     if (snap) {
       const gameDef = getGameDef(room);
-      const serialized = gameDef?.engine?.serialize ? gameDef.engine.serialize(snap) : snap;
+      const engine = gameDef ? gameDef.engine : null;
+      const serialized = (engine && engine.serialize) ? engine.serialize(snap) : snap;
       socket.emit('game_state', serialized);
     }
   });
@@ -154,7 +155,7 @@ io.on('connection', (socket) => {
     const room = socket.data.room;
     if (!room) return;
     const gameDef = getGameDef(room);
-    if (gameDef?.engine?.createInitialState) {
+    if (gameDef && gameDef.engine && gameDef.engine.createInitialState) {
       roomState.set(room, gameDef.engine.createInitialState());
       roomKeys.delete(room);
       io.to(room).emit('game_reset', { gameName: room });
@@ -204,7 +205,8 @@ setInterval(() => {
     }
     step(state, keys, TICK_MS);
     roomState.set(room, state);
-    const serialized = gameDef?.engine?.serialize ? gameDef.engine.serialize(state) : state;
+    const engine = gameDef ? gameDef.engine : null;
+    const serialized = (engine && engine.serialize) ? engine.serialize(state) : state;
     io.to(room).emit('game_state', serialized);
   }
 }, TICK_MS);
