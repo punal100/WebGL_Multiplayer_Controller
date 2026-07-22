@@ -96,14 +96,10 @@ export default function MainDisplay() {
     };
 
     const onDisconnect = ({ controllerId }) => {
-      if (viewerRef.current) {
-        setStatus((s) => ({ ...s, [String(controllerId)]: false }));
-        return;
-      }
       const id = String(controllerId);
-      if (inputModel === 'keys') {
+      const pressed = pressedByController.current[id];
+      if (inputModel === 'keys' && pressed) {
         const map = KEY_MAP[id];
-        const pressed = pressedByController.current[id];
         pressed.forEach((button) => {
           const key = map[button];
           if (key) window.dispatchEvent(new CustomEvent('game_key', { detail: { key, state: 'up' } }));
