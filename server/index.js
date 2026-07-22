@@ -4,6 +4,8 @@ import { Server } from 'socket.io';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getLanIp } from './lanIp.js';
+import { getGameDef } from '../src/games/registry.js';
+import { step } from '../src/game/engine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 4567;
@@ -49,36 +51,29 @@ app.get(/.*/, (req, res) => {
 
 const roomControllers = new Map();
 const roomState = new Map();
-const roomHost = new Map();
-const roomHostLastBeat = new Map();
-const HOST_BEAT_TIMEOUT_MS = 3500;
+const roomInputModel = new Map();
+const roomKeys = new Map();
+const TICK_MS = 33;
 
-function releaseHostSlot(room, socket) {
-  if (
-    room &&
-    socket.data.role === 'host' &&
-    socket.data.authoritative &&
-    roomHost.get(room) === socket.id
-  ) {
-    roomHost.delete(room);
-    roomHostLastBeat.delete(room);
+function releaseRoom(room, socket) {
+  if (!room) return;
+  if (socket.data.role === 'host') {
+    roomState.delete(room);
+    roomInputModel.delete(room);
+    roomKeys.delete(room);
   }
 }
 
 io.on('connection', (socket) => {
-  socket.on('reserve_host', () => {
-    const room = socket.data.room;
-    if (!room || socket.data.role !== 'host') return;
-    roomHostLastBeat.set(room, Date.now());
-  });
-
   socket.on('join_game', ({ gameName, role, controllerId }) => {
     const room = gameName || 'TankDuel';
+    const gameDef = getGameDef(room);
+    const inputModel = gameDef?.inputModel || 'keys';
 
     const prevRoom = socket.data.room;
     if (prevRoom && prevRoom !== room) {
       socket.leave(prevRoom);
-      releaseHostSlot(prevRoom, socket);
+      releaseRoom(prevRoom, socket);
     }
 
     socket.data.room = room;
@@ -89,106 +84,130 @@ io.on('connection', (socket) => {
     if (role === 'controller') {
       if (!roomControllers.has(room)) roomControllers.set(room, new Map());
       roomControllers.get(room).set(String(controllerId), socket.id);
-      io.to(room).emit('controller_status', {
-        controllerId,
-        connected: true,
-      });
+      io.to(room).emit('controller_status', { controllerId, connected: true });
     } else if (role === 'host') {
-      roomHost.delete(room);
-      const isAuthoritative = !roomHost.has(room);
-      if (isAuthoritative) roomHost.set(room, socket.id);
-      socket.data.authoritative = isAuthoritative;
-
-      const existing = roomControllers.get(room);
-      if (existing) {
-        for (const id of existing.keys()) {
-          socket.emit('controller_status', { controllerId: id, connected: true });
+      roomInputModel.set(room, inputModel);
+      if (!roomState.has(room)) {
+        const engine = gameDef?.engine;
+        if (engine?.createInitialState) {
+          roomState.set(room, engine.createInitialState());
         }
       }
       const saved = roomState.get(room);
       if (saved) socket.emit('resume_state', saved);
-
-      socket.emit('host_role', { authoritative: isAuthoritative });
+      socket.emit('host_role', { authoritative: true });
     }
   });
 
   socket.on('controller_input', (payload) => {
     const room = socket.data.room;
-    if (!room) return;
-    socket.to(room).emit('controller_input', payload);
-  });
+    if (!room || !roomState.has(room)) return;
+    const inputModel = roomInputModel.get(room) || 'keys';
+    const state = roomState.get(room);
 
-  socket.on('request_state', () => {
-    const room = socket.data.room;
-    if (!room) return;
-    const hostId = roomHost.get(room);
-    if (hostId && hostId !== socket.id) {
-      io.to(hostId).emit('request_state', { from: socket.id });
+    if (inputModel === 'actions') {
+      const gameDef = getGameDef(room);
+      if (gameDef?.engine?.applyAction) {
+        const next = gameDef.engine.applyAction(state, String(payload.controllerId), payload.button);
+        if (next !== state) {
+          roomState.set(room, next);
+          io.to(room).emit('game_state', gameDef.engine.serialize(next));
+        }
+      }
+    } else {
+      const cid = String(payload.controllerId);
+      if (!roomKeys.has(room)) roomKeys.set(room, new Map());
+      const controllerKeys = roomKeys.get(room);
+      if (!controllerKeys.has(cid)) controllerKeys.set(cid, new Set());
+      const keys = controllerKeys.get(cid);
+      if (payload.state === 'down') keys.add(payload.button);
+      else keys.delete(payload.button);
     }
   });
 
   socket.on('host_key', (payload) => {
     const room = socket.data.room;
-    if (!room) return;
-    const hostId = roomHost.get(room);
-    if (hostId && hostId !== socket.id) {
-      io.to(hostId).emit('host_key', payload);
-    }
+    if (!room || !roomState.has(room)) return;
+    const inputModel = roomInputModel.get(room) || 'keys';
+    if (inputModel !== 'keys') return;
+    if (!roomKeys.has(room)) roomKeys.set(room, new Map());
+    const hostKeys = roomKeys.get(room);
+    const hostId = 'host';
+    if (!hostKeys.has(hostId)) hostKeys.set(hostId, new Set());
+    const keys = hostKeys.get(hostId);
+    if (payload.state === 'down') keys.add(payload.key);
+    else keys.delete(payload.key);
   });
 
-  socket.on('game_state', (payload) => {
+  socket.on('request_state', () => {
     const room = socket.data.room;
     if (!room) return;
-    if (socket.data.authoritative && roomHost.get(room) === socket.id) {
-      roomState.set(room, payload.state);
-      socket.to(room).emit('game_state', payload.state);
+    const snap = roomState.get(room);
+    if (snap) {
+      const gameDef = getGameDef(room);
+      const serialized = gameDef?.engine?.serialize ? gameDef.engine.serialize(snap) : snap;
+      socket.emit('game_state', serialized);
     }
   });
 
   socket.on('reset_game', () => {
     const room = socket.data.room;
     if (!room) return;
-    const hostId = roomHost.get(room);
-    if (!hostId) return;
-    roomState.delete(room);
-    io.to(room).emit('game_reset', { gameName: room });
+    const gameDef = getGameDef(room);
+    if (gameDef?.engine?.createInitialState) {
+      roomState.set(room, gameDef.engine.createInitialState());
+      roomKeys.delete(room);
+      io.to(room).emit('game_reset', { gameName: room });
+    }
   });
 
   socket.on('leave_game', () => {
     const { room } = socket.data;
     if (!room) return;
     socket.leave(room);
-    releaseHostSlot(room, socket);
+    releaseRoom(room, socket);
     socket.data.room = null;
   });
 
   socket.on('disconnect', () => {
-    const { room, role, controllerId } = socket.data;
+    const { room, role } = socket.data;
     if (role === 'controller' && room) {
+      const cid = String(socket.data.controllerId);
       const m = roomControllers.get(room);
       if (m) {
-        m.delete(String(controllerId));
-        socket.to(room).emit('controller_disconnected', { controllerId });
+        m.delete(cid);
+        socket.to(room).emit('controller_disconnected', { controllerId: cid });
       }
+      const ck = roomKeys.get(room);
+      if (ck) ck.delete(cid);
     } else if (role === 'host' && room) {
-      releaseHostSlot(room, socket);
+      releaseRoom(room, socket);
     }
   });
 });
 
 setInterval(() => {
-  const now = Date.now();
-  for (const [room, hostId] of roomHost) {
-    const last = roomHostLastBeat.get(room);
-    if (!last || now - last > HOST_BEAT_TIMEOUT_MS) {
-      roomHostLastBeat.delete(room);
-      const prev = roomHost.get(room);
-      if (prev !== hostId) continue;
-      roomHost.delete(room);
-      io.to(room).emit('host_timeout');
+  for (const [room, state] of roomState) {
+    const inputModel = roomInputModel.get(room) || 'keys';
+    const gameDef = getGameDef(room);
+
+    if (inputModel === 'actions') {
+      continue;
     }
+
+    const keys = new Set();
+    const controllerKeys = roomKeys.get(room);
+    if (controllerKeys) {
+      for (const set of controllerKeys.values()) {
+        for (const k of set) keys.add(k);
+      }
+    }
+    step(state, keys, TICK_MS);
+    roomState.set(room, state);
+    const serialized = gameDef?.engine?.serialize ? gameDef.engine.serialize(state) : state;
+    io.to(room).emit('game_state', serialized);
   }
-}, 750);
+}, TICK_MS);
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);

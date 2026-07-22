@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
 import { socket } from '../socket.js';
-import { KEY_MAP } from '../inputMap.js';
-import GameCanvas from './GameCanvas.jsx';
-import BrandLogo from './BrandLogo.jsx';
 import { getGameDef } from '../games.js';
 import { audio } from '../game/audio.js';
+import GameCanvas from './GameCanvas.jsx';
+import BrandLogo from './BrandLogo.jsx';
 
 const DEFAULT_GAME = 'TankDuel';
 
@@ -14,20 +13,14 @@ export default function MainDisplay() {
   const { gameName = DEFAULT_GAME } = useParams();
   const GAME_NAME = gameName;
   const gameDef = getGameDef(GAME_NAME);
-  // 'actions' games apply discrete moves to authoritative state; 'keys' games
-  // use the legacy synthetic-keyboard path (TankDuel).
   const inputModel = gameDef?.inputModel || 'keys';
-  const inputSchema = gameDef?.inputSchema || null;
 
   const [lanIp, setLanIp] = useState('localhost');
   const [port, setPort] = useState(4567);
   const [origin, setOrigin] = useState('');
   const [status, setStatus] = useState({ 1: false, 2: false });
   const [showSettings, setShowSettings] = useState(false);
-  const [isViewer, setIsViewer] = useState(false);
   const [soundOn, setSoundOn] = useState(true);
-  const viewerRef = useRef(false);
-  const pressedByController = useRef({ 1: new Set(), 2: new Set() });
 
   useEffect(() => {
     fetch('/api/config')
@@ -41,104 +34,34 @@ export default function MainDisplay() {
 
     socket.emit('join_game', { gameName: GAME_NAME, role: 'host' });
 
-    // The server tells us whether THIS main window is the single authoritative
-    // simulator. Any extra main window becomes a viewer: it must not process
-    // controller input (only the authoritative host drives the game).
-    const onHostRole = ({ authoritative }) => {
-      setIsViewer(!authoritative);
-      viewerRef.current = !authoritative;
-    };
-
-    // --- 'keys' input model (TankDuel): controller buttons -> held keys ---
-    // We feed the pressed key DIRECTLY into the authoritative host's simulation
-    // (via a custom event the GameCanvas listens to), instead of synthesizing
-    // fake KeyboardEvents. This is the same robust, direct path TicTacToe uses
-    // for actions, and avoids the fragile synthetic-keyboard dispatch that some
-    // browsers/environments drop — which is why controller input for TankDuel
-    // could fail to register while TicTacToe kept working.
-    const onInputKeys = (payload) => {
-      if (payload?.gameName && payload.gameName !== GAME_NAME) return;
-      if (viewerRef.current) return;
-      const { controllerId, button, state } = payload;
-      const id = String(controllerId);
-      const map = KEY_MAP[id];
-      if (!map) return;
-      const key = map[button];
-      if (!key) return;
-      const pressed = pressedByController.current[id];
-      if (state === 'down') pressed.add(button);
-      else pressed.delete(button);
-      // The authoritative host's GameCanvas owns the `keys` set; tell it.
-      window.dispatchEvent(
-        new CustomEvent('game_key', { detail: { key, state } })
-      );
-    };
-
-    // --- 'actions' input model (TicTacToe): forward the button press to the
-    // host GameCanvas, which maps it through the game's input schema and
-    // applies it to the authoritative state. We use a custom event so the
-    // canvas (which owns the state) can consume it.
-    const onInputActions = (payload) => {
-      if (payload?.gameName && payload.gameName !== GAME_NAME) return;
-      if (viewerRef.current) return;
-      if (payload.state !== 'down') return; // discrete press, ignore release
-      const action = inputSchema?.[payload.button];
-      if (!action) return;
-      window.dispatchEvent(
-        new CustomEvent('game_action', {
-          detail: { controllerId: String(payload.controllerId), action },
-        })
-      );
-    };
-
     const onStatus = ({ controllerId, connected }) => {
       setStatus((s) => ({ ...s, [String(controllerId)]: connected }));
     };
 
     const onDisconnect = ({ controllerId }) => {
-      const id = String(controllerId);
-      const pressed = pressedByController.current[id];
-      if (inputModel === 'keys' && pressed) {
-        const map = KEY_MAP[id];
-        pressed.forEach((button) => {
-          const key = map[button];
-          if (key) window.dispatchEvent(new CustomEvent('game_key', { detail: { key, state: 'up' } }));
-        });
-        pressed.clear();
-      }
-      setStatus((s) => ({ ...s, [id]: false }));
+      setStatus((s) => ({ ...s, [String(controllerId)]: false }));
     };
 
-    const onInput = inputModel === 'actions' ? onInputActions : onInputKeys;
-    socket.on('controller_input', onInput);
     socket.on('controller_status', onStatus);
     socket.on('controller_disconnected', onDisconnect);
-    socket.on('host_role', onHostRole);
 
-    // Any main window's own keyboard should drive the game, even a viewer
-    // window. The authoritative host applies keys locally; viewer windows
-    // relay their key presses to the authoritative host via the server.
     const onKeyDown = (e) => {
-      if (viewerRef.current) socket.emit('host_key', { gameName: GAME_NAME, key: e.key, state: 'down' });
+      socket.emit('host_key', { gameName: GAME_NAME, key: e.key, state: 'down' });
     };
     const onKeyUp = (e) => {
-      if (viewerRef.current) socket.emit('host_key', { gameName: GAME_NAME, key: e.key, state: 'up' });
+      socket.emit('host_key', { gameName: GAME_NAME, key: e.key, state: 'up' });
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
 
     return () => {
-      socket.off('controller_input', onInput);
       socket.off('controller_status', onStatus);
       socket.off('controller_disconnected', onDisconnect);
-      socket.off('host_role', onHostRole);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
-      // Leave the room so this socket never lingers in a stale game's room
-      // (prevents another game's input from reaching us after navigating away).
       socket.emit('leave_game', { gameName: GAME_NAME });
     };
-  }, [GAME_NAME, inputModel, inputSchema]);
+  }, [GAME_NAME, inputModel]);
 
   const resetGame = () => {
     socket.emit('reset_game', { gameName: GAME_NAME });
@@ -163,11 +86,7 @@ export default function MainDisplay() {
         <div className="display__qr">
           <QRCodeCanvas value={c1Url} size={150} />
         </div>
-        <div
-          className={`display__status ${
-            status[1] ? 'connected' : 'disconnected'
-          }`}
-        >
+        <div className={`display__status ${status[1] ? 'connected' : 'disconnected'}`}>
           {status[1] ? 'P1 Connected' : 'P1 Waiting'}
         </div>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>{c1Url}</span>
@@ -187,11 +106,7 @@ export default function MainDisplay() {
         </div>
         <div className="display__title">{GAME_NAME} — 2 Player</div>
         <div className="display__game">
-          <GameCanvas
-            mode={isViewer ? 'viewer' : 'host'}
-            socket={socket}
-            gameName={GAME_NAME}
-          />
+          <GameCanvas socket={socket} gameName={GAME_NAME} />
         </div>
         <div className="controls-legend">
           <span><b>P1</b> WASD move · Q fire · E dash · R barricade · F ricochet</span>
@@ -204,11 +119,7 @@ export default function MainDisplay() {
         <div className="display__qr">
           <QRCodeCanvas value={c2Url} size={150} />
         </div>
-        <div
-          className={`display__status ${
-            status[2] ? 'connected' : 'disconnected'
-          }`}
-        >
+        <div className={`display__status ${status[2] ? 'connected' : 'disconnected'}`}>
           {status[2] ? 'P2 Connected' : 'P2 Waiting'}
         </div>
         <span style={{ fontSize: 11, color: 'var(--muted)' }}>{c2Url}</span>
@@ -241,10 +152,7 @@ export default function MainDisplay() {
             <button className="overlay__reset" onClick={resetGame}>
               Reset Game
             </button>
-            <button
-              className="overlay__close"
-              onClick={() => setShowSettings(false)}
-            >
+            <button className="overlay__close" onClick={() => setShowSettings(false)}>
               Close
             </button>
           </div>
