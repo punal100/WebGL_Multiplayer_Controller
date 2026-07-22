@@ -50,7 +50,7 @@ function hydrate(state) {
   return state;
 }
 
-function createTankState(w, h) {
+function createTankState(w = 1280, h = 720) {
   const state = {
     w, h,
     players: [

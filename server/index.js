@@ -87,7 +87,7 @@ io.on('connection', (socket) => {
     } else if (role === 'host') {
       roomInputModel.set(room, inputModel);
       if (!roomState.has(room)) {
-        roomState.set(room, createInitialState(room));
+        roomState.set(room, createInitialState(room, 1280, 720));
       }
       const saved = roomState.get(room);
       if (saved) socket.emit('resume_state', saved);
@@ -147,7 +147,7 @@ io.on('connection', (socket) => {
   socket.on('reset_game', () => {
     const room = socket.data.room;
     if (!room) return;
-    roomState.set(room, createInitialState(room));
+    roomState.set(room, createInitialState(room, 1280, 720));
     roomKeys.delete(room);
     io.to(room).emit('game_reset', { gameName: room });
   });
