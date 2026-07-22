@@ -222,12 +222,23 @@ npm run pack
 # -> release/webgl-multiplayer-controller-1.0.0.tar.gz
 ```
 
-#### 3.2 Provision the VM (fresh Ubuntu/Debian)
+ #### 3.2 Provision the VM (fresh Ubuntu/Debian)
 
 ```bash
-# Install Node.js 18+ (20 LTS recommended)
+# Install Node.js 20 LTS + npm (nodesource is the recommended path on Debian/Ubuntu;
+# some minimal images don't include npm by default, so we install both explicitly).
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+sudo apt-get install -y nodejs npm
+node -v && npm -v
+```
+
+> **Troubleshooting npm missing:** If `npm -v` says "command not found" after the
+> nodesource step, fall back to the distro packages directly:
+>
+> ```bash
+> sudo apt update
+> sudo apt install -y nodejs npm
+> ```
 
 # App directory
 sudo mkdir -p /opt/webgl-mp-controller
@@ -462,9 +473,17 @@ terminal):
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+sudo apt-get install -y nodejs npm
 node -v && npm -v
 ```
+
+> **Troubleshooting npm missing:** If `npm -v` says "command not found" after the
+> nodesource step, some minimal container images need the distro packages instead:
+>
+> ```bash
+> sudo apt update
+> sudo apt install -y nodejs npm
+> ```
 
 If `sudo` is unavailable or the instance is not Debian/Ubuntu, check
 `cat /etc/os-release` and install Node 18+ for that distro.
