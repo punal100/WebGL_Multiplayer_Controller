@@ -33,9 +33,9 @@ function hydrate(state) {
   if (typeof state.shake !== 'number') state.shake = 0;
   if (!Array.isArray(state.players)) return state;
   state.players.forEach((p, i) => {
-    const dash = p.dash ?? (p.abilities && p.abilities.DashCooldown);
-    const mine = p.mine ?? (p.abilities && p.abilities.MineCooldown);
-    const special = p.special ?? (p.abilities && p.abilities.SpecialFireCooldown);
+    const dash = p.dash != null ? p.dash : (p.abilities && p.abilities.DashCooldown);
+    const mine = p.mine != null ? p.mine : (p.abilities && p.abilities.MineCooldown);
+    const special = p.special != null ? p.special : (p.abilities && p.abilities.SpecialFireCooldown);
     p.abilities = {
       DashCooldown: typeof dash === 'number' ? dash : 0,
       MineCooldown: typeof mine === 'number' ? mine : 0,
@@ -94,7 +94,7 @@ function serializeTank(state) {
     barricades: state.barricades.map((m) => ({ x: Math.round(m.x), y: Math.round(m.y), hp: m.hp })),
     walls: state.walls.map((wl) => ({ x: wl.x, y: wl.y, w: wl.w, h: wl.h })),
     shake: +state.shake.toFixed(3),
-    events: state.events.map((e) => ({ ...e, x: Math.round(e.x ?? 0), y: Math.round(e.y ?? 0) })),
+    events: state.events.map((e) => ({ ...e, x: Math.round(e.x != null ? e.x : 0), y: Math.round(e.y != null ? e.y : 0) })),
   };
 }
 
